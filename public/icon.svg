@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
-  <rect width="512" height="512" rx="112" fill="#020617"/>
-  <rect x="24" y="24" width="464" height="464" rx="92" stroke="#1E293B" stroke-width="8"/>
-  <path d="M132 172C132 149.909 149.909 132 172 132H340C362.091 132 380 149.909 380 172V340C380 362.091 362.091 380 340 380H172C149.909 380 132 362.091 132 340V172Z" fill="#0F172A" stroke="#334155" stroke-width="6"/>
-  <path d="M180 288L232 236L272 276L336 208" stroke="#34D399" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M292 208H336V252" stroke="#34D399" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="176" y="324" width="160" height="16" rx="8" fill="#22D3EE" fill-opacity="0.85"/>
+  <rect width="512" height="512" rx="112" fill="#F6F6F3"/>
+  <rect x="24" y="24" width="464" height="464" rx="92" fill="#FFFFFF" stroke="#E4E3DD" stroke-width="8"/>
+  <path d="M132 172C132 149.909 149.909 132 172 132H340C362.091 132 380 149.909 380 172V340C380 362.091 362.091 380 340 380H172C149.909 380 132 362.091 132 340V172Z" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="6"/>
+  <path d="M180 288L232 236L272 276L336 208" stroke="#1D4ED8" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M292 208H336V252" stroke="#1D4ED8" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="176" y="324" width="160" height="16" rx="8" fill="#4338CA" fill-opacity="0.85"/>
 </svg>

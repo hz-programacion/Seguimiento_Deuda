@@ -171,3 +171,35 @@ export function addMonthsToPeriodo(periodo: PeriodoID, offset: number): PeriodoI
   }
   return current;
 }
+
+export interface CardCycleValidation {
+  valid: boolean;
+  windowDays: number | null;
+  warning?: string;
+}
+
+export function validateCardCycleDates(
+  fechaCierre?: string,
+  fechaVencimiento?: string
+): CardCycleValidation {
+  if (!fechaCierre || !fechaVencimiento) {
+    return { valid: true, windowDays: null };
+  }
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(fechaCierre) ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(fechaVencimiento)
+  ) {
+    return { valid: true, windowDays: null };
+  }
+  const windowDays = diffDaysISO(fechaCierre, fechaVencimiento);
+  if (windowDays <= 0) {
+    return {
+      valid: false,
+      windowDays,
+      warning:
+        'La fecha de cierre debe ser anterior al vencimiento para calcular la ventana válida de pago sin doble cobro.',
+    };
+  }
+  return { valid: true, windowDays };
+}
+

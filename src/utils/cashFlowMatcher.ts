@@ -813,3 +813,71 @@ export function runCashFlowMatcher(
     simuladorExcedente,
   };
 }
+
+/**
+ * Estima el costo financiero mensual aproximado sobre el saldo capital rotativo
+ * a partir de la TNA informada (capital * TNA / 100 / 12) en centavos exactos.
+ */
+export function estimateMonthlyCardInterestCents(
+  saldoCapitalARS?: number,
+  tnaEstimadaPct?: number
+): number {
+  if (!saldoCapitalARS || saldoCapitalARS <= 0 || !tnaEstimadaPct || tnaEstimadaPct <= 0) {
+    return 0;
+  }
+  const capitalCents = MoneyUtils.toCents(saldoCapitalARS);
+  return Math.round((capitalCents * (tnaEstimadaPct / 100)) / 12);
+}
+
+export interface CashflowWaterfallBreakdown {
+  ingresosTotalesCents: number;
+  pagadoCents: number;
+  pendienteEnVentanaCents: number;
+  esperandoCierreCents: number;
+  excedeTopeCents: number;
+  reservaComidaProtegidaCents: number;
+  excedenteRealCents: number;
+  deficitCents: number;
+}
+
+export function computeCashflowWaterfall(
+  matchResult: CashFlowMatchResult,
+  minFoodCushionCents: number
+): CashflowWaterfallBreakdown {
+  const { summary, q1, q2 } = matchResult;
+  const ingresosTotalesCents = summary.ingresosTotalesCents;
+  const pagadoCents = summary.totalPagadoCents;
+  const esperandoCierreCents =
+    q1.totalEsperandoCierreCents + q2.totalEsperandoCierreCents;
+  const excedeTopeCents =
+    q1.totalExcedeTopeCents + q2.totalExcedeTopeCents;
+  const pendienteEnVentanaCents = Math.max(
+    0,
+    summary.totalPendienteCents - esperandoCierreCents - excedeTopeCents
+  );
+
+  const safeMinFood = Math.max(0, minFoodCushionCents);
+  const netoTrasObligacionesCents =
+    ingresosTotalesCents - summary.obligacionesFijasTotalesCents;
+  const deficitCents = Math.max(0, -netoTrasObligacionesCents);
+  const reservaComidaProtegidaCents = Math.max(
+    0,
+    Math.min(safeMinFood, netoTrasObligacionesCents)
+  );
+  const excedenteRealCents = Math.max(
+    0,
+    netoTrasObligacionesCents - reservaComidaProtegidaCents
+  );
+
+  return {
+    ingresosTotalesCents,
+    pagadoCents,
+    pendienteEnVentanaCents,
+    esperandoCierreCents,
+    excedeTopeCents,
+    reservaComidaProtegidaCents,
+    excedenteRealCents,
+    deficitCents,
+  };
+}
+

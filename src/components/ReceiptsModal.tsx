@@ -95,7 +95,10 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedUrl = manualUrl.trim();
-    if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+    if (
+      !trimmedUrl.startsWith('http://') &&
+      !trimmedUrl.startsWith('https://')
+    ) {
       setErrorMsg('Pegá un enlace válido que empiece con https://');
       return;
     }
@@ -133,24 +136,27 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
   return (
     <>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 overflow-y-auto"
+        className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[#111318]/45 p-4 backdrop-blur-sm"
         role="dialog"
         aria-modal="true"
         aria-labelledby="receipts-modal-title"
       >
-        <div className="my-8 w-full max-w-xl rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
+        <div className="my-8 w-full max-w-xl rounded-2xl border border-[#E4E3DD] bg-white p-6 shadow-[0_20px_50px_rgba(17,19,24,0.16)]">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2
                 id="receipts-modal-title"
-                className="flex items-center gap-2 text-lg font-bold text-slate-100"
+                className="flex items-center gap-2 font-display text-lg font-bold text-[#111318]"
               >
-                <FolderOpen className="h-5 w-5 text-emerald-400" aria-hidden="true" />
+                <FolderOpen
+                  className="h-5 w-5 text-[#1D4ED8]"
+                  aria-hidden="true"
+                />
                 Resúmenes y Comprobantes
               </h2>
-              <p className="mt-0.5 text-xs text-slate-400">
+              <p className="mt-0.5 text-xs text-[#525866]">
                 {item.titulo} · {formatPeriodoLabel(item.periodo)} · Carpeta Drive{' '}
-                <span className="font-mono-tabular text-slate-300">
+                <span className="font-mono-tabular font-semibold text-[#111318]">
                   ArgenCaja Comprobantes/{item.periodo}
                 </span>
               </p>
@@ -159,21 +165,20 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
               type="button"
               onClick={onClose}
               aria-label="Cerrar ventana de comprobantes"
-              className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+              className="rounded-lg p-1.5 text-[#747A88] transition-colors hover:bg-[#F6F6F3] hover:text-[#111318]"
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
 
-          {/* Estado conexión Google Drive */}
-          <div className="mt-4 flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-950/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-4 flex flex-col gap-3 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-0.5">
-              <p className="text-xs font-semibold text-slate-200">
+              <p className="text-xs font-semibold text-[#111318]">
                 {hasDriveToken
                   ? `Google Drive conectado${driveUserEmail ? ` (${driveUserEmail})` : ''}`
                   : 'Conectá Google Drive para subir PDFs o fotos'}
               </p>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-[#525866]">
                 Los archivos se guardan directo en tu Drive (permiso acotado solo a ArgenCaja).
                 {isCollaborator
                   ? ' Si querés que el administrador también abra el PDF, compartí el archivo desde Drive.'
@@ -185,7 +190,7 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
               <button
                 type="button"
                 onClick={onSignOutDrive}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-[#E4E3DD] bg-white px-3 py-1.5 text-xs font-semibold text-[#111318] transition-colors hover:bg-[#EEEDE8] whitespace-nowrap shrink-0"
               >
                 <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
                 Desconectar
@@ -209,7 +214,7 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
                     setBusy(false);
                   }
                 }}
-                className="inline-flex items-center gap-2.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-900 shadow-sm transition-colors hover:bg-slate-100 disabled:opacity-60 whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-2.5 rounded-xl border border-[#D4D2CA] bg-white px-3.5 py-2 text-xs font-semibold text-[#111318] shadow-xs transition-colors hover:bg-[#F6F6F3] disabled:opacity-60 whitespace-nowrap shrink-0"
               >
                 <svg
                   className="h-4 w-4 shrink-0"
@@ -238,21 +243,20 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
             )}
           </div>
 
-          {/* Selector de tipo y botón de subida */}
-          <div className="mt-4 space-y-3 rounded-lg border border-slate-800 bg-slate-950/50 p-4">
+          <div className="mt-4 space-y-3 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div
                 role="group"
                 aria-label="Tipo de documento"
-                className="flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-900 p-1"
+                className="flex items-center gap-1 rounded-lg border border-[#E4E3DD] bg-white p-1"
               >
                 <button
                   type="button"
                   onClick={() => setTipoDoc('RESUMEN')}
                   className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
                     tipoDoc === 'RESUMEN'
-                      ? 'bg-slate-800 text-cyan-300'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-[#EEF2FF] text-[#4338CA]'
+                      : 'text-[#525866] hover:text-[#111318]'
                   }`}
                 >
                   Resumen / Factura
@@ -262,8 +266,8 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
                   onClick={() => setTipoDoc('COMPROBANTE')}
                   className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
                     tipoDoc === 'COMPROBANTE'
-                      ? 'bg-slate-800 text-emerald-300'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-[#EFF6FF] text-[#1D4ED8]'
+                      : 'text-[#525866] hover:text-[#111318]'
                   }`}
                 >
                   Comprobante de Pago
@@ -273,7 +277,7 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowManualLink((v) => !v)}
-                className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200"
+                className="inline-flex items-center gap-1 text-xs font-medium text-[#525866] hover:text-[#111318]"
               >
                 <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
                 {showManualLink ? 'Ocultar enlace manual' : 'Pegar link de Drive'}
@@ -282,21 +286,26 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
 
             {hasDriveToken ? (
               <label
-                className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-4 py-5 text-center transition-colors ${
+                className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-4 py-5 text-center transition-colors ${
                   busy
-                    ? 'border-slate-700 bg-slate-900/40 opacity-60 cursor-wait'
-                    : 'border-emerald-500/40 bg-emerald-500/5 hover:border-emerald-400 hover:bg-emerald-500/10'
+                    ? 'cursor-wait border-[#E4E3DD] bg-white opacity-60'
+                    : 'border-[#BFDBFE] bg-[#EFF6FF]/60 hover:border-[#1D4ED8] hover:bg-[#EFF6FF]'
                 }`}
               >
-                <Upload className="h-5 w-5 text-emerald-400" aria-hidden="true" />
-                <span className="mt-2 text-xs font-semibold text-slate-200">
+                <Upload
+                  className="h-5 w-5 text-[#1D4ED8]"
+                  aria-hidden="true"
+                />
+                <span className="mt-2 text-xs font-semibold text-[#111318]">
                   {busy
                     ? 'Subiendo a Google Drive...'
                     : `Subir ${
-                        tipoDoc === 'RESUMEN' ? 'Resumen / Factura' : 'Comprobante de Pago'
+                        tipoDoc === 'RESUMEN'
+                          ? 'Resumen / Factura'
+                          : 'Comprobante de Pago'
                       } (PDF o Foto)`}
                 </span>
-                <span className="mt-0.5 text-[11px] text-slate-400">
+                <span className="mt-0.5 text-[11px] text-[#525866]">
                   Se guardará en Drive → ArgenCaja Comprobantes/{item.periodo}
                 </span>
                 <input
@@ -308,15 +317,15 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
                 />
               </label>
             ) : (
-              <p className="text-xs text-slate-400">
-                Conectá tu cuenta con <strong>Sign in with Google</strong> arriba para subir archivos directo desde acá, o pegá un link existente de Drive.
+              <p className="text-xs text-[#525866]">
+                Conectá tu cuenta con <strong className="text-[#111318]">Sign in with Google</strong> arriba para subir archivos directo desde acá, o pegá un link existente de Drive.
               </p>
             )}
 
             {showManualLink && (
               <form
                 onSubmit={handleManualSubmit}
-                className="space-y-2.5 border-t border-slate-800 pt-3"
+                className="space-y-2.5 border-t border-[#E4E3DD] pt-3"
               >
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                   <input
@@ -324,21 +333,21 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
                     value={manualName}
                     onChange={(e) => setManualName(e.target.value)}
                     placeholder="Nombre (ej: Resumen Dic)"
-                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
+                    className="rounded-lg border border-[#E4E3DD] bg-white px-3 py-1.5 text-xs text-[#111318]"
                   />
                   <input
                     type="url"
                     value={manualUrl}
                     onChange={(e) => setManualUrl(e.target.value)}
                     placeholder="https://drive.google.com/..."
-                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
+                    className="rounded-lg border border-[#E4E3DD] bg-white px-3 py-1.5 text-xs text-[#111318]"
                     required
                   />
                 </div>
                 <div className="flex justify-end">
                   <button
                     type="submit"
-                    className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-slate-700"
+                    className="rounded-lg bg-[#1D4ED8] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#1E40AF]"
                   >
                     Guardar enlace
                   </button>
@@ -348,23 +357,26 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
           </div>
 
           {errorMsg && (
-            <p role="alert" className="mt-3 text-xs font-medium text-rose-400">
+            <p
+              role="alert"
+              className="mt-3 rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-medium text-[#B91C1C]"
+            >
               {errorMsg}
             </p>
           )}
 
-          {/* Lista de adjuntos */}
           <div className="mt-5">
-            <h3 className="text-xs font-semibold text-slate-300">
-              Archivos adjuntos en {formatPeriodoLabel(item.periodo)} ({adjuntos.length})
+            <h3 className="text-xs font-semibold text-[#111318]">
+              Archivos adjuntos en {formatPeriodoLabel(item.periodo)} (
+              {adjuntos.length})
             </h3>
 
             {adjuntos.length === 0 ? (
-              <p className="mt-2 rounded-lg border border-slate-800/80 bg-slate-950/40 px-4 py-4 text-center text-xs text-slate-500">
+              <p className="mt-2 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-4 py-4 text-center text-xs text-[#747A88]">
                 Todavía no hay resúmenes ni comprobantes cargados para este movimiento.
               </p>
             ) : (
-              <div className="mt-2 divide-y divide-slate-800/80 rounded-lg border border-slate-800 bg-slate-950/40">
+              <div className="mt-2 divide-y divide-[#EEEDE8] rounded-xl border border-[#E4E3DD] bg-white">
                 {adjuntos.map((adj) => (
                   <div
                     key={adj.id}
@@ -374,16 +386,16 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
                       <FileText
                         className={`h-4 w-4 shrink-0 ${
                           adj.tipo === 'COMPROBANTE'
-                            ? 'text-emerald-400'
-                            : 'text-cyan-400'
+                            ? 'text-[#1D4ED8]'
+                            : 'text-[#4338CA]'
                         }`}
                         aria-hidden="true"
                       />
                       <div className="min-w-0">
-                        <p className="truncate font-medium text-slate-200">
+                        <p className="truncate font-semibold text-[#111318]">
                           {adj.nombre}
                         </p>
-                        <p className="text-[11px] text-slate-400 font-mono-tabular">
+                        <p className="font-mono-tabular text-[11px] text-[#525866]">
                           {adj.tipo === 'RESUMEN' ? 'Resumen' : 'Comprobante'} ·{' '}
                           {formatDateAR(adj.subidoEn.slice(0, 10))}
                         </p>
@@ -395,7 +407,7 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
                         href={adj.webViewLink}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-200 hover:bg-slate-700"
+                        className="inline-flex items-center gap-1 rounded-lg border border-[#E4E3DD] bg-[#F6F6F3] px-2.5 py-1 text-xs font-semibold text-[#111318] transition-colors hover:bg-[#EEEDE8]"
                       >
                         Abrir
                         <ExternalLink className="h-3 w-3" aria-hidden="true" />
@@ -404,7 +416,7 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
                         type="button"
                         onClick={() => setPendingDelete(adj)}
                         aria-label={`Eliminar archivo ${adj.nombre}`}
-                        className="rounded-md border border-slate-800 bg-slate-900 p-1.5 text-slate-400 hover:border-rose-500/40 hover:text-rose-400"
+                        className="rounded-lg border border-[#E4E3DD] bg-white p-1.5 text-[#747A88] transition-colors hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#DC2626]"
                       >
                         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                       </button>
@@ -419,7 +431,7 @@ export const ReceiptsModal: React.FC<ReceiptsModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700"
+              className="rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-4 py-2 text-xs font-semibold text-[#111318] transition-colors hover:bg-[#EEEDE8]"
             >
               Listo
             </button>

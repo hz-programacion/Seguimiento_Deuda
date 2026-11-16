@@ -69,10 +69,13 @@ const defaultApp: FirebaseApp =
   getApps().find((a) => a.name === '[DEFAULT]') ??
   initializeApp(firebaseAppletConfig);
 
-export const db: Firestore = getFirestore(
-  defaultApp,
-  firebaseAppletConfig.firestoreDatabaseId
-);
+const configuredDatabaseId = (
+  firebaseAppletConfig as { firestoreDatabaseId?: string }
+).firestoreDatabaseId;
+
+export const db: Firestore = configuredDatabaseId
+  ? getFirestore(defaultApp, configuredDatabaseId)
+  : getFirestore(defaultApp);
 export const auth: Auth = getAuth(defaultApp);
 
 export function handleFirestoreError(

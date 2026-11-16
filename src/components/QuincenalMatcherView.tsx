@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'motion/react';
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -31,31 +32,36 @@ interface QuincenalMatcherViewProps {
   onMoveVentana: (item: ItemFinanciero, targetVentana: VentanaQuincena) => void;
 }
 
-function getStatusPill(status: BankingPaymentStatus): {
+function getStatusIndicator(status: BankingPaymentStatus): {
   label: string;
-  className: string;
+  dotClass: string;
+  textClass: string;
 } {
   if (status === 'PAGAR_AHORA') {
     return {
       label: 'Pagar ahora',
-      className: 'border border-emerald-500/35 bg-emerald-500/10 text-emerald-300',
+      dotClass: 'bg-[#1D4ED8]',
+      textClass: 'text-[#1D4ED8]',
     };
   }
   if (status === 'ESPERAR_CIERRE') {
     return {
       label: 'Esperar cierre',
-      className: 'border border-cyan-500/35 bg-cyan-500/10 text-cyan-300',
+      dotClass: 'bg-[#D97706]',
+      textClass: 'text-[#B45309]',
     };
   }
   if (status === 'EXCEDE_TOPE_COMIDA') {
     return {
       label: 'Excede tope comida',
-      className: 'border border-amber-500/35 bg-amber-500/10 text-amber-300',
+      dotClass: 'bg-[#DC2626]',
+      textClass: 'text-[#B91C1C]',
     };
   }
   return {
     label: 'Pagado',
-    className: 'border border-slate-700 bg-slate-800 text-slate-300',
+    dotClass: 'bg-[#9CA3AF]',
+    textClass: 'text-[#525866]',
   };
 }
 
@@ -79,84 +85,126 @@ const QuincenaColumn: React.FC<{
   const moveLabel =
     caja.ventana === 'Q1_DIAS_1_AL_14' ? 'Pasar a 2°Q' : 'Pasar a 1°Q';
 
+  const safeCap = Math.max(1, caja.presupuestoPagableSinComidaCents);
+  const utilizationPct = Math.min(
+    100,
+    Math.round((caja.obligacionesCents / safeCap) * 100)
+  );
+  const exceedsSafeCap =
+    caja.obligacionesCents > caja.presupuestoPagableSinComidaCents;
+
   return (
     <section
       aria-labelledby={`heading-${caja.ventana}`}
-      className="flex flex-col rounded-xl border border-slate-800 bg-slate-900/90 p-5"
+      className="flex flex-col rounded-2xl border border-[#E4E3DD] bg-white p-5 shadow-[0_1px_2px_rgba(17,19,24,0.03)] sm:p-6"
     >
-      <div className="flex items-start justify-between gap-4 border-b border-slate-800 pb-4">
+      <div className="flex items-start justify-between gap-4 border-b border-[#EEEDE8] pb-4">
         <div>
           <h2
             id={`heading-${caja.ventana}`}
-            className="text-lg font-bold text-slate-100"
+            className="font-display text-lg font-bold text-[#111318]"
           >
             {caja.ventana === 'Q1_DIAS_1_AL_14'
               ? '1° Quincena'
               : '2° Quincena'}
           </h2>
-          <p className="text-xs text-slate-400">{caja.rangoDias}</p>
+          <p className="text-xs text-[#525866]">{caja.rangoDias}</p>
         </div>
         <div className="text-right">
-          <p className="text-xs text-slate-400">Caja total disponible</p>
-          <p className="text-lg font-bold text-emerald-400 font-mono-tabular">
+          <p className="text-[11px] uppercase tracking-wider text-[#747A88]">
+            Caja disponible
+          </p>
+          <p className="font-mono-tabular text-lg font-bold text-[#1D4ED8]">
             {MoneyUtils.formatARSCents(caja.disponibleTotalCents)}
           </p>
         </div>
       </div>
 
-      {/* Resumen numérico + Tope seguro para deudas protegiendo comida */}
-      <div className="grid grid-cols-2 gap-3 border-b border-slate-800 py-4 text-xs sm:grid-cols-4">
-        <div>
-          <p className="text-slate-400">Ingresos (+arrastre)</p>
-          <p className="mt-0.5 font-semibold text-slate-100 font-mono-tabular">
-            {MoneyUtils.formatARSCents(caja.disponibleTotalCents)}
-          </p>
+      {/* 4 métricas + medidor de carga */}
+      <div className="space-y-3 border-b border-[#EEEDE8] py-4">
+        <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+          <div>
+            <p className="text-[#747A88]">Ingresos (+arrastre)</p>
+            <p className="mt-0.5 font-mono-tabular font-bold text-[#111318]">
+              {MoneyUtils.formatARSCents(caja.disponibleTotalCents)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[#747A88]">Comida protegida</p>
+            <p className="mt-0.5 font-mono-tabular font-bold text-[#1D4ED8]">
+              {MoneyUtils.formatARSCents(caja.reservaComidaSugeridaCents)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[#747A88]">Tope seguro</p>
+            <p className="mt-0.5 font-mono-tabular font-bold text-[#4338CA]">
+              {MoneyUtils.formatARSCents(caja.presupuestoPagableSinComidaCents)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[#747A88]">Recomendado hoy</p>
+            <p className="mt-0.5 font-mono-tabular font-bold text-[#111318]">
+              {MoneyUtils.formatARSCents(caja.totalRecomendadoAhoraCents)}
+            </p>
+          </div>
         </div>
+
         <div>
-          <p className="text-slate-400">Comida protegida</p>
-          <p className="mt-0.5 font-semibold text-emerald-400 font-mono-tabular">
-            {MoneyUtils.formatARSCents(caja.reservaComidaSugeridaCents)}
-          </p>
-        </div>
-        <div>
-          <p className="text-slate-400">Tope seguro p/ deudas</p>
-          <p className="mt-0.5 font-semibold text-cyan-300 font-mono-tabular">
-            {MoneyUtils.formatARSCents(caja.presupuestoPagableSinComidaCents)}
-          </p>
-        </div>
-        <div>
-          <p className="text-slate-400">Recomendado hoy</p>
-          <p className="mt-0.5 font-semibold text-slate-100 font-mono-tabular">
-            {MoneyUtils.formatARSCents(caja.totalRecomendadoAhoraCents)}
-          </p>
+          <div className="flex items-center justify-between text-[11px] font-mono-tabular">
+            <span className="font-sans text-[#525866]">
+              Uso del tope pagable sin tocar comida
+            </span>
+            <span
+              className={
+                exceedsSafeCap ? 'font-bold text-[#B45309]' : 'font-bold text-[#1D4ED8]'
+              }
+            >
+              {MoneyUtils.formatCompactCents(caja.obligacionesCents)} /{' '}
+              {MoneyUtils.formatCompactCents(
+                caja.presupuestoPagableSinComidaCents
+              )}
+            </span>
+          </div>
+          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#EEEDE8]">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${utilizationPct}%` }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              className={`h-full ${
+                exceedsSafeCap ? 'bg-[#D97706]' : 'bg-[#1D4ED8]'
+              }`}
+            />
+          </div>
         </div>
       </div>
 
       {(caja.totalEsperandoCierreCents > 0 || caja.totalExcedeTopeCents > 0) && (
-        <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-2 text-[11px] text-slate-300 font-mono-tabular">
+        <div className="mt-3 flex flex-wrap gap-3 border-b border-[#EEEDE8] pb-3 font-mono-tabular text-[11px]">
           {caja.totalEsperandoCierreCents > 0 && (
-            <span className="mr-3 text-cyan-300">
-              Esperando cierre: {MoneyUtils.formatARSCents(caja.totalEsperandoCierreCents)}
+            <span className="font-semibold text-[#B45309]">
+              Esperando cierre:{' '}
+              {MoneyUtils.formatARSCents(caja.totalEsperandoCierreCents)}
             </span>
           )}
           {caja.totalExcedeTopeCents > 0 && (
-            <span className="text-amber-300">
-              Excede tope comida: {MoneyUtils.formatARSCents(caja.totalExcedeTopeCents)}
+            <span className="font-semibold text-[#B91C1C]">
+              Excede tope comida:{' '}
+              {MoneyUtils.formatARSCents(caja.totalExcedeTopeCents)}
             </span>
           )}
         </div>
       )}
 
-      {/* Ingresos / Bolsillos de la Quincena */}
-      <div className="border-b border-slate-800 py-4">
-        <h3 className="text-xs font-semibold text-slate-300">
+      {/* Ingresos */}
+      <div className="border-b border-[#EEEDE8] py-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-[#747A88]">
           De dónde entra la plata
         </h3>
-        <div className="mt-2 space-y-2">
+        <div className="mt-2.5 space-y-2">
           {caja.remanenteArrastreCents > 0 && (
-            <div className="flex items-center justify-between text-xs text-cyan-300">
+            <div className="flex items-center justify-between text-xs font-medium text-[#4338CA]">
               <span>Sobrante que pasa de la 1° Quincena</span>
-              <span className="font-mono-tabular font-semibold">
+              <span className="font-mono-tabular font-bold">
                 +{MoneyUtils.formatARSCents(caja.remanenteArrastreCents)}
               </span>
             </div>
@@ -164,11 +212,11 @@ const QuincenaColumn: React.FC<{
           {caja.itemsIngreso.map((inc) => (
             <div
               key={inc.id}
-              className="flex items-center justify-between gap-2 text-xs text-slate-300"
+              className="flex items-center justify-between gap-2 text-xs text-[#111318]"
             >
-              <span className="truncate">
+              <span className="truncate font-medium">
                 {inc.titulo}{' '}
-                <span className="text-slate-500 font-mono-tabular">
+                <span className="font-mono-tabular text-[#747A88]">
                   (Día {String(inc.diaVencimientoOCobro).padStart(2, '0')} ·{' '}
                   {inc.bolsilloResponsable})
                 </span>
@@ -178,7 +226,7 @@ const QuincenaColumn: React.FC<{
                 amount={inc.montoPactado}
                 prefix="+"
                 readOnly={!canEditFinances}
-                textClassName="text-xs font-semibold text-emerald-400"
+                textClassName="text-xs font-bold text-[#1D4ED8]"
                 onSaveAmount={(val) => onQuickUpdateAmount(inc, val)}
               />
             </div>
@@ -186,48 +234,47 @@ const QuincenaColumn: React.FC<{
         </div>
       </div>
 
-      {/* Vencimientos calzados */}
+      {/* Obligaciones calzadas */}
       <div className="flex-1 pt-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold text-slate-300">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-[#747A88]">
             Pagos de esta quincena ({caja.asignaciones.length})
           </h3>
-          <span className="text-xs font-semibold text-slate-200 font-mono-tabular">
+          <span className="font-mono-tabular text-xs font-bold text-[#111318]">
             Total: {MoneyUtils.formatARSCents(caja.obligacionesCents)}
           </span>
         </div>
 
         {caja.asignaciones.length === 0 ? (
-          <p className="mt-4 text-xs text-slate-500">
+          <p className="mt-4 text-xs text-[#747A88]">
             No hay vencimientos asignados en esta quincena.
           </p>
         ) : (
-          <div className="mt-3 divide-y divide-slate-800/80">
+          <div className="mt-3 divide-y divide-[#EEEDE8]">
             {caja.asignaciones.map((alloc) => {
-              const statusPill = getStatusPill(alloc.bankingStatus);
+              const statusMeta = getStatusIndicator(alloc.bankingStatus);
               return (
-                <div key={alloc.obligacion.id} className="py-3 space-y-1.5">
+                <div key={alloc.obligacion.id} className="py-3.5 space-y-1.5">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 space-y-0.5">
-                      <div className="flex flex-wrap items-center gap-1.5">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
                         <span
-                          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${statusPill.className}`}
+                          className={`inline-flex items-center gap-1.5 font-semibold ${statusMeta.textClass}`}
                         >
-                          {statusPill.label}
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${statusMeta.dotClass}`}
+                            aria-hidden="true"
+                          />
+                          {statusMeta.label}
                         </span>
-                        <p className="text-sm font-medium text-slate-100">
-                          {alloc.obligacion.titulo}
-                        </p>
-                      </div>
-                      <p className="text-xs text-slate-400 font-mono-tabular">
-                        Vence {formatDateAR(alloc.obligacion.fechaExactaVencimiento)} ·{' '}
+                        <span className="text-[#D4D2CA]">·</span>
                         <span
                           className={
                             alloc.prioridad === 'CRITICA'
-                              ? 'text-rose-400 font-semibold'
+                              ? 'font-semibold text-[#DC2626]'
                               : alloc.prioridad === 'ALTA'
-                                ? 'text-amber-400 font-semibold'
-                                : 'text-slate-400'
+                                ? 'font-semibold text-[#B45309]'
+                                : 'text-[#747A88]'
                           }
                         >
                           {alloc.prioridad === 'CRITICA'
@@ -236,8 +283,16 @@ const QuincenaColumn: React.FC<{
                               ? 'Pronto'
                               : 'Programado'}
                         </span>
+                      </div>
+
+                      <p className="text-sm font-bold text-[#111318]">
+                        {alloc.obligacion.titulo}
+                      </p>
+
+                      <p className="font-mono-tabular text-xs text-[#525866]">
+                        Vence {formatDateAR(alloc.obligacion.fechaExactaVencimiento)}
                         {alloc.ventanaPagoDesdeISO && (
-                          <span className="text-cyan-300">
+                          <span className="font-semibold text-[#B45309]">
                             {' '}
                             · Ventana {formatShortDateAR(alloc.ventanaPagoDesdeISO)}→
                             {formatShortDateAR(alloc.fechaLimiteRecomendadaISO)}
@@ -251,7 +306,7 @@ const QuincenaColumn: React.FC<{
                         itemTitle={alloc.obligacion.titulo}
                         amount={alloc.obligacion.montoPactado}
                         readOnly={!canEditFinances}
-                        textClassName="text-sm font-bold text-slate-100"
+                        textClassName="text-sm font-bold text-[#111318]"
                         onSaveAmount={(val) =>
                           onQuickUpdateAmount(alloc.obligacion, val)
                         }
@@ -264,9 +319,12 @@ const QuincenaColumn: React.FC<{
                               onMoveVentana(alloc.obligacion, oppositeVentana)
                             }
                             title={`Mover a la otra quincena (${moveLabel})`}
-                            className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700"
+                            className="inline-flex items-center gap-1 rounded-lg border border-[#E4E3DD] bg-[#F6F6F3] px-2.5 py-1 text-[11px] font-medium text-[#111318] hover:bg-[#EEEDE8]"
                           >
-                            <ArrowLeftRight className="h-3 w-3" aria-hidden="true" />
+                            <ArrowLeftRight
+                              className="h-3 w-3"
+                              aria-hidden="true"
+                            />
                             {moveLabel}
                           </button>
                           {alloc.obligacion.estado === 'PENDIENTE' && (
@@ -274,7 +332,7 @@ const QuincenaColumn: React.FC<{
                               type="button"
                               onClick={() => onMarkPaid(alloc.obligacion)}
                               aria-label={`Pagar ${alloc.obligacion.titulo}`}
-                              className="rounded-md border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25"
+                              className="rounded-lg bg-[#1D4ED8] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#1E40AF]"
                             >
                               Pagar
                             </button>
@@ -285,23 +343,22 @@ const QuincenaColumn: React.FC<{
                   </div>
 
                   {alloc.avisoBancario && (
-                    <p className="rounded border border-slate-800 bg-slate-950/80 px-2.5 py-1.5 text-[11px] leading-relaxed text-slate-300">
+                    <p className="rounded-lg bg-[#F6F6F3] px-3 py-2 text-[11px] leading-relaxed text-[#525866]">
                       {alloc.avisoBancario}
                     </p>
                   )}
 
-                  {/* Qué bolsillo paga esta deuda */}
                   {alloc.bolsillosSugeridos.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-[#525866]">
                       <ArrowRight
-                        className="h-3 w-3 text-emerald-400 shrink-0"
+                        className="h-3 w-3 text-[#1D4ED8] shrink-0"
                         aria-hidden="true"
                       />
                       <span>Se paga con:</span>
                       {alloc.bolsillosSugeridos.map((b, idx) => (
                         <span
                           key={`${b.bolsillo}-${idx}`}
-                          className="text-slate-300 font-mono-tabular"
+                          className="font-mono-tabular font-semibold text-[#111318]"
                         >
                           {b.bolsillo} (
                           {MoneyUtils.formatARSCents(b.montoAsignadoCents)})
@@ -309,8 +366,9 @@ const QuincenaColumn: React.FC<{
                         </span>
                       ))}
                       {alloc.faltanteCents > 0 && (
-                        <span className="text-rose-400 font-semibold font-mono-tabular">
-                          · Faltante {MoneyUtils.formatARSCents(alloc.faltanteCents)}
+                        <span className="font-mono-tabular font-bold text-[#DC2626]">
+                          · Faltante{' '}
+                          {MoneyUtils.formatARSCents(alloc.faltanteCents)}
                         </span>
                       )}
                     </div>
@@ -322,14 +380,14 @@ const QuincenaColumn: React.FC<{
         )}
       </div>
 
-      {/* Saldo libre al cierre de quincena */}
-      <div className="mt-4 flex items-center justify-between border-t border-slate-800 pt-4 text-sm">
-        <span className="text-slate-400">Plata libre tras pagar cuentas</span>
+      {/* Saldo libre al cierre */}
+      <div className="mt-4 flex items-center justify-between border-t border-[#EEEDE8] pt-4 text-sm">
+        <span className="text-[#525866]">Plata libre tras pagar cuentas</span>
         <span
-          className={`font-bold font-mono-tabular ${
+          className={`font-mono-tabular font-bold ${
             caja.saldoLibrePostPagosCents >= 0
-              ? 'text-emerald-400'
-              : 'text-rose-500'
+              ? 'text-[#1D4ED8]'
+              : 'text-[#DC2626]'
           }`}
         >
           {MoneyUtils.formatARSCents(caja.saldoLibrePostPagosCents)}
@@ -354,67 +412,66 @@ export const QuincenalMatcherView: React.FC<QuincenalMatcherViewProps> = ({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-100">
-            Organizador por Quincena · {formatPeriodoLabel(summary.periodo)}
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#747A88]">
+            Calce de Liquidez
+          </p>
+          <h1 className="mt-0.5 font-display text-2xl font-bold tracking-tight text-[#111318] sm:text-3xl">
+            Quincenas · {formatPeriodoLabel(summary.periodo)}
           </h1>
-          <p className="text-sm text-slate-400">
+          <p className="mt-1 text-xs text-[#525866] sm:text-sm">
             Análisis bancario al {formatShortDateAR(referenceDateISO)}: calza tus cobros sin tocar el mínimo de comida y respeta el cierre de tarjetas.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-950/20 px-3 py-2 text-xs">
+        <div className="flex items-center gap-2 rounded-xl border border-[#BFDBFE] bg-white px-3.5 py-2 text-xs">
           <ShieldCheck
-            className="h-4 w-4 text-emerald-400 shrink-0"
+            className="h-4 w-4 text-[#1D4ED8] shrink-0"
             aria-hidden="true"
           />
-          <span className="text-slate-300">Mínimo comida/mes:</span>
+          <span className="text-[#525866]">Mínimo comida/mes:</span>
           <InlineAmountEditor
             itemTitle="mínimo mensual de comida"
             amount={minFoodReserveARS}
             readOnly={!canEditFinances}
-            textClassName="text-xs font-bold text-emerald-300"
+            textClassName="text-xs font-bold text-[#1D4ED8]"
             onSaveAmount={onChangeMinFoodReserveARS}
           />
         </div>
       </div>
 
-      {/* Estado de Calce Quincenal */}
       <div
         role="status"
-        className={`flex items-start gap-3 rounded-xl border p-4 ${
+        className={`flex items-start gap-3 rounded-2xl border p-4 ${
           alertaDescalce.hayDescalce
-            ? 'border-amber-500/40 bg-amber-500/10'
-            : 'border-emerald-500/30 bg-emerald-500/10'
+            ? 'border-[#FDE68A] bg-[#FFFBEB]'
+            : 'border-[#BFDBFE] bg-[#EFF6FF]/60'
         }`}
       >
         {alertaDescalce.hayDescalce ? (
           <AlertTriangle
-            className="mt-0.5 h-5 w-5 shrink-0 text-amber-400"
+            className="mt-0.5 h-5 w-5 shrink-0 text-[#D97706]"
             aria-hidden="true"
           />
         ) : (
           <CheckCircle2
-            className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400"
+            className="mt-0.5 h-5 w-5 shrink-0 text-[#1D4ED8]"
             aria-hidden="true"
           />
         )}
         <div>
           <p
-            className={`text-sm font-semibold ${
-              alertaDescalce.hayDescalce ? 'text-amber-300' : 'text-emerald-300'
+            className={`text-sm font-bold ${
+              alertaDescalce.hayDescalce ? 'text-[#92400E]' : 'text-[#1D4ED8]'
             }`}
           >
             {alertaDescalce.hayDescalce
               ? `Atención en 1° Quincena: reservá ${MoneyUtils.formatARSCents(alertaDescalce.montoAReservarCents)} del mes anterior o ajustá vencimientos`
               : 'Quincenas equilibradas respetando tu mínimo de comida'}
           </p>
-          <p className="mt-0.5 text-xs text-slate-300">
-            {alertaDescalce.mensaje}
-          </p>
+          <p className="mt-0.5 text-xs text-[#525866]">{alertaDescalce.mensaje}</p>
         </div>
       </div>
 
-      {/* Vista lado a lado de Q1 y Q2 */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <QuincenaColumn
           caja={q1}

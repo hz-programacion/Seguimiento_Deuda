@@ -208,4 +208,43 @@ export interface FirebaseConfigData {
   firestoreDatabaseId?: string;
 }
 
-export type AppTab = 'tablero' | 'checklist' | 'quincenas' | 'extincion';
+export type CalendarEventKind =
+  | 'COBRO'
+  | 'VENCIMIENTO'
+  | 'VENTANA_TARJETA'
+  | 'EXTINCION_CUOTA';
+
+export interface CalendarPlannedEvent {
+  eventKey: string;
+  itemId: string;
+  dateISO: string;
+  originalDueISO?: string;
+  kind: CalendarEventKind;
+  title: string;
+  description: string;
+  amountARS: number;
+  bolsillo: string;
+  isPaid: boolean;
+  isUrgent: boolean;
+  shiftedFromWeekend: boolean;
+  blockedPreClose: boolean;
+}
+
+export interface GoogleCalendarEventItem {
+  id: string;
+  summary: string;
+  description?: string;
+  htmlLink?: string;
+  startDateISO: string;
+  startTimeLabel?: string;
+  isAllDay: boolean;
+  argenCajaKey?: string;
+}
+
+export type AppTab =
+  | 'tablero'
+  | 'calendario'
+  | 'checklist'
+  | 'quincenas'
+  | 'extincion';
+

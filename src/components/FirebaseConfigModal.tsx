@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
+  CalendarCheck,
   Cloud,
   Download,
-  FolderOpen,
   LogOut,
   ShieldCheck,
   Upload,
@@ -97,59 +97,58 @@ export const FirebaseConfigModal: React.FC<FirebaseConfigModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[#111318]/45 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="firebase-modal-title"
     >
-      <div className="my-8 w-full max-w-xl rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
+      <div className="my-8 w-full max-w-xl rounded-2xl border border-[#E4E3DD] bg-white p-6 shadow-[0_20px_50px_rgba(17,19,24,0.16)]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2
               id="firebase-modal-title"
-              className="flex items-center gap-2 text-lg font-bold text-slate-100"
+              className="flex items-center gap-2 font-display text-lg font-bold text-[#111318]"
             >
-              <Cloud className="h-5 w-5 text-emerald-400" aria-hidden="true" />
-              Respaldo, Google Drive y Nube
+              <Cloud className="h-5 w-5 text-[#1D4ED8]" aria-hidden="true" />
+              Respaldo, Google Workspace y Nube
             </h2>
-            <p className="mt-1 text-xs text-slate-400">
-              Exportá tu respaldo en .json, conectá Google Drive para subir comprobantes o verificá tu sincronización en la nube.
+            <p className="mt-1 text-xs text-[#525866]">
+              Exportá tu respaldo en .json, conectá Google Drive y Calendar o verificá tu sincronización en la nube.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Cerrar respaldo y nube"
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+            className="rounded-lg p-1.5 text-[#747A88] transition-colors hover:bg-[#F6F6F3] hover:text-[#111318]"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 
-        {/* 1. Estado Firebase Provisionado */}
-        <section className="mt-5 rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+        <section className="mt-5 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
-              <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-100">
+              <h3 className="flex items-center gap-1.5 text-sm font-bold text-[#111318]">
                 <ShieldCheck
-                  className="h-4 w-4 text-emerald-400"
+                  className="h-4 w-4 text-[#1D4ED8]"
                   aria-hidden="true"
                 />
                 Sincronización Segura en Firestore
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-[#525866]">
                 Sesión:{' '}
-                <span className="text-slate-200 font-mono-tabular">
+                <span className="font-mono-tabular font-semibold text-[#111318]">
                   {cloudUserEmail ?? 'Activa'}
                 </span>{' '}
                 · Rol:{' '}
-                <span className="font-semibold text-emerald-400">
+                <span className="font-semibold text-[#1D4ED8]">
                   {userRole === 'ADMIN'
                     ? 'Administrador Total'
                     : 'Colaboradora (Lectura y comprobantes)'}
                 </span>
               </p>
-              <p className="text-[11px] text-slate-500 font-mono-tabular">
+              <p className="font-mono-tabular text-[11px] text-[#747A88]">
                 Proyecto: {firebaseAppletConfig.projectId} ·{' '}
                 {cloudStatus === 'connected'
                   ? 'Sincronizado en tiempo real'
@@ -159,21 +158,20 @@ export const FirebaseConfigModal: React.FC<FirebaseConfigModalProps> = ({
           </div>
         </section>
 
-        {/* 2. Google Drive para Resúmenes y Comprobantes */}
-        <section className="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+        <section className="mt-4 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-100">
-                <FolderOpen
-                  className="h-4 w-4 text-cyan-400"
+              <h3 className="flex items-center gap-1.5 text-sm font-bold text-[#111318]">
+                <CalendarCheck
+                  className="h-4 w-4 text-[#4338CA]"
                   aria-hidden="true"
                 />
-                Google Drive (Permiso acotado drive.file)
+                Google Workspace (Drive acotado y Calendar)
               </h3>
-              <p className="mt-0.5 text-xs text-slate-400">
+              <p className="mt-0.5 text-xs text-[#525866]">
                 {hasDriveToken
-                  ? `Conectado como ${driveUserEmail ?? 'cuenta Google'}. ArgenCaja solo accede a los archivos que subís desde acá.`
-                  : 'Conectá Google Drive para subir resúmenes PDF o tickets de pago sin consumir espacio de la base.'}
+                  ? `Conectado como ${driveUserEmail ?? 'cuenta Google'}. ArgenCaja solo accede a archivos subidos acá (drive.file) y eventos de agenda (calendar.events).`
+                  : 'Conectá Google para subir resúmenes PDF, comprobantes y agendar vencimientos directo en Google Calendar.'}
               </p>
             </div>
             <div className="shrink-0">
@@ -181,10 +179,10 @@ export const FirebaseConfigModal: React.FC<FirebaseConfigModalProps> = ({
                 <button
                   type="button"
                   onClick={onSignOutDrive}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#E4E3DD] bg-white px-3 py-2 text-xs font-semibold text-[#111318] transition-colors hover:bg-[#EEEDE8]"
                 >
                   <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
-                  Desconectar Drive
+                  Desconectar Google
                 </button>
               ) : (
                 <button
@@ -196,19 +194,19 @@ export const FirebaseConfigModal: React.FC<FirebaseConfigModalProps> = ({
                     try {
                       await onSignInDrive();
                       setStatusMsg(
-                        'Google Drive conectado. Ya podés subir resúmenes y comprobantes.'
+                        'Google Workspace conectado. Ya podés usar Drive y Google Calendar.'
                       );
                     } catch (err) {
                       setErrorMsg(
                         err instanceof Error
                           ? err.message
-                          : 'No se pudo conectar con Google Drive.'
+                          : 'No se pudo conectar con Google Workspace.'
                       );
                     } finally {
                       setBusy(false);
                     }
                   }}
-                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-900 hover:bg-slate-100"
+                  className="inline-flex items-center gap-2 rounded-xl border border-[#D4D2CA] bg-white px-3.5 py-2 text-xs font-semibold text-[#111318] shadow-xs transition-colors hover:bg-[#EEEDE8]"
                 >
                   <svg
                     className="h-4 w-4 shrink-0"
@@ -239,14 +237,13 @@ export const FirebaseConfigModal: React.FC<FirebaseConfigModalProps> = ({
           </div>
         </section>
 
-        {/* 3. Respaldo en archivo (.json) */}
-        <section className="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+        <section className="mt-4 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="text-sm font-semibold text-slate-100">
+              <h3 className="text-sm font-bold text-[#111318]">
                 Copia de Seguridad (.json)
               </h3>
-              <p className="mt-0.5 text-xs text-slate-400">
+              <p className="mt-0.5 text-xs text-[#525866]">
                 Descargá todos tus meses y movimientos en tu dispositivo.
               </p>
             </div>
@@ -254,13 +251,13 @@ export const FirebaseConfigModal: React.FC<FirebaseConfigModalProps> = ({
               <button
                 type="button"
                 onClick={handleExportJson}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3.5 py-2 text-xs font-semibold text-slate-950 hover:bg-emerald-400 whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#1D4ED8] px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1E40AF] whitespace-nowrap"
               >
                 <Download className="h-3.5 w-3.5" aria-hidden="true" />
                 Descargar copia
               </button>
               {canEditFinances && (
-                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700 whitespace-nowrap">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-[#E4E3DD] bg-white px-3.5 py-2 text-xs font-semibold text-[#111318] transition-colors hover:bg-[#EEEDE8] whitespace-nowrap">
                   <Upload className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Importar archivo</span>
                   <input
@@ -276,12 +273,18 @@ export const FirebaseConfigModal: React.FC<FirebaseConfigModalProps> = ({
         </section>
 
         {errorMsg && (
-          <p role="alert" className="mt-3 text-xs font-medium text-rose-400">
+          <p
+            role="alert"
+            className="mt-3 rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-medium text-[#B91C1C]"
+          >
             {errorMsg}
           </p>
         )}
         {statusMsg && (
-          <p role="status" className="mt-3 text-xs font-medium text-emerald-400">
+          <p
+            role="status"
+            className="mt-3 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-2 text-xs font-medium text-[#1D4ED8]"
+          >
             {statusMsg}
           </p>
         )}
@@ -290,7 +293,7 @@ export const FirebaseConfigModal: React.FC<FirebaseConfigModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700"
+            className="rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-4 py-2 text-xs font-semibold text-[#111318] transition-colors hover:bg-[#EEEDE8]"
           >
             Cerrar
           </button>

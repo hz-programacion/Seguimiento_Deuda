@@ -18,8 +18,8 @@ export default defineConfig(() => {
           name: 'ArgenCaja — Control Financiero del Hogar',
           short_name: 'ArgenCaja',
           description: 'Gestión quincenal de flujo de caja, extinción de cuotas y protección de comida.',
-          theme_color: '#020617',
-          background_color: '#020617',
+          theme_color: '#F6F6F3',
+          background_color: '#F6F6F3',
           display: 'standalone',
           start_url: '/',
           scope: '/',
@@ -103,9 +103,19 @@ export default defineConfig(() => {
       },
     ],
     resolve: {
+      dedupe: ['react', 'react-dom'],
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+    },
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react-dom/client',
+        'motion/react',
+        'lucide-react',
+      ],
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

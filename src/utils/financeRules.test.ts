@@ -5,9 +5,19 @@ import {
   createSeedDecember2026,
   SEED_SAC_ITEM_DIC_2026,
 } from './seedData';
-import { computeMonthSummary, runCashFlowMatcher } from './cashFlowMatcher';
+import {
+  computeCashflowWaterfall,
+  computeMonthSummary,
+  estimateMonthlyCardInterestCents,
+  runCashFlowMatcher,
+} from './cashFlowMatcher';
 import { closeAndCloneMonth, projectMultipleMonths } from './monthTransition';
-import { addOneCalendarMonth } from './dateUtils';
+import { addOneCalendarMonth, validateCardCycleDates } from './dateUtils';
+import {
+  buildCalendarMonthGrid,
+  buildMonthlyFinancialEvents,
+  generateICSContent,
+} from './calendarPlanner';
 
 test('MoneyUtils avoids IEEE 754 floating-point errors', () => {
   assert.equal(MoneyUtils.addAmounts(0.1, 0.2), 0.3);
@@ -281,4 +291,104 @@ test('Weekend due date shifts recommended banking payment deadline to prior busi
   assert.equal(luz.fechaLimiteRecomendadaISO, '2026-12-11');
   assert.ok(luz.avisoBancario?.includes('11/12'));
 });
+
+test('validateCardCycleDates flags closing date on or after due date and computes valid window days', () => {
+  const valid = validateCardCycleDates('2026-12-10', '2026-12-22');
+  assert.equal(valid.valid, true);
+  assert.equal(valid.windowDays, 12);
+
+  const invalidSameDay = validateCardCycleDates('2026-12-22', '2026-12-22');
+  assert.equal(invalidSameDay.valid, false);
+  assert.ok(invalidSameDay.warning);
+
+  const invalidAfter = validateCardCycleDates('2026-12-25', '2026-12-22');
+  assert.equal(invalidAfter.valid, false);
+});
+
+test('computeCashflowWaterfall and estimateMonthlyCardInterestCents compute exact cent breakdowns', () => {
+  const seed = createSeedDecember2026();
+  const res = runCashFlowMatcher('2026-12', seed, '2026-12-05', 90000000);
+  const wf = computeCashflowWaterfall(res, 90000000);
+
+  assert.equal(wf.ingresosTotalesCents, 252170843);
+  assert.equal(wf.reservaComidaProtegidaCents, 90000000);
+  assert.equal(wf.excedenteRealCents, 16377044);
+  assert.equal(wf.deficitCents, 0);
+  assert.equal(
+    wf.pagadoCents +
+      wf.pendienteEnVentanaCents +
+      wf.esperandoCierreCents +
+      wf.excedeTopeCents +
+      wf.reservaComidaProtegidaCents +
+      wf.excedenteRealCents,
+    wf.ingresosTotalesCents
+  );
+
+  // Patagonia capital $1.258.815,90 a TNA 110% -> ~115.391,46/mes
+  const monthlyInterest = estimateMonthlyCardInterestCents(1258815.9, 110);
+  assert.equal(monthlyInterest, 11539146);
+});
+
+test('buildCalendarMonthGrid builds Monday-first 7-column grid for 2026-12', () => {
+  const grid = buildCalendarMonthGrid('2026-12');
+  assert.equal(grid.length % 7, 0);
+  // 2026-12-01 es Martes -> la grilla arranca Lunes 2026-11-30
+  assert.equal(grid[0].dateISO, '2026-11-30');
+  assert.equal(grid[0].inCurrentMonth, false);
+  assert.equal(grid[0].weekdayIndex, 0);
+  assert.equal(grid[1].dateISO, '2026-12-01');
+  assert.equal(grid[1].inCurrentMonth, true);
+  assert.equal(grid[1].weekdayIndex, 1);
+
+  const inMonthCount = grid.filter((c) => c.inCurrentMonth).length;
+  assert.equal(inMonthCount, 31);
+});
+
+test('buildMonthlyFinancialEvents generates card post-close window, weekend shift, and extinction milestone', () => {
+  const seed = createSeedDecember2026();
+  const periodItems = seed.filter((i) => i.periodo === '2026-12');
+  const match = runCashFlowMatcher('2026-12', seed, '2026-12-05');
+  const events = buildMonthlyFinancialEvents('2026-12', match, periodItems);
+
+  // Ventana post-cierre para Patagonia (cierra 10/12 -> abre 11/12)
+  const patWindow = events.find(
+    (e) =>
+      e.kind === 'VENTANA_TARJETA' && e.itemId === 'dic26-tarj-patagonia'
+  );
+  assert.ok(patWindow);
+  assert.equal(patWindow.dateISO, '2026-12-11');
+
+  // Luz vence sábado 12/12 -> evento calendario adelantado al viernes 11/12
+  const luzDue = events.find(
+    (e) => e.kind === 'VENCIMIENTO' && e.itemId === 'dic26-srv-luz'
+  );
+  assert.ok(luzDue);
+  assert.equal(luzDue.dateISO, '2026-12-11');
+  assert.equal(luzDue.shiftedFromWeekend, true);
+  assert.equal(luzDue.originalDueISO, '2026-12-12');
+
+  // Carrefour Máquina 9/9 genera hito EXTINCION_CUOTA
+  const extEvent = events.find(
+    (e) =>
+      e.kind === 'EXTINCION_CUOTA' && e.itemId === 'dic26-carrefour-maquina'
+  );
+  assert.ok(extEvent);
+  assert.equal(extEvent.dateISO, '2026-12-04');
+});
+
+test('generateICSContent produces valid RFC 5545 VCALENDAR output', () => {
+  const seed = createSeedDecember2026();
+  const periodItems = seed.filter((i) => i.periodo === '2026-12');
+  const match = runCashFlowMatcher('2026-12', seed, '2026-12-05');
+  const events = buildMonthlyFinancialEvents('2026-12', match, periodItems).slice(0, 2);
+
+  const ics = generateICSContent(events, 'ArgenCaja Dic 2026', 1);
+  assert.ok(ics.includes('BEGIN:VCALENDAR'));
+  assert.ok(ics.includes('END:VCALENDAR'));
+  assert.ok(ics.includes('BEGIN:VEVENT'));
+  assert.ok(ics.includes('BEGIN:VALARM'));
+  assert.ok(ics.includes('TRIGGER:-P1D'));
+});
+
+
 

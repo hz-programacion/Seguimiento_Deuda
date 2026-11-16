@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import {
   AccessRequest,
   AppTab,
@@ -64,6 +65,7 @@ import { AuthGateScreen } from './components/AuthGateScreen';
 import { HeaderNav } from './components/HeaderNav';
 import { WorkspaceToolbar } from './components/WorkspaceToolbar';
 import { DashboardBento } from './components/DashboardBento';
+import { CalendarPlannerView } from './components/CalendarPlannerView';
 import { PaymentChecklist } from './components/PaymentChecklist';
 import { QuincenalMatcherView } from './components/QuincenalMatcherView';
 import { ExtinctionTimelineView } from './components/ExtinctionTimelineView';
@@ -125,7 +127,7 @@ export default function App() {
     useState<PendingConfirmAction>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Estado Google Drive (OAuth en memoria)
+  // Estado Google Workspace (Drive + Calendar, OAuth en memoria)
   const [driveUserEmail, setDriveUserEmail] = useState<string | null>(null);
   const [hasDriveToken, setHasDriveToken] = useState(false);
 
@@ -156,7 +158,7 @@ export default function App() {
     saveMinFoodReserveARS(minFoodReserveARS);
   }, [minFoodReserveARS]);
 
-  // Suscripción a sesión de Google Drive
+  // Suscripción a sesión de Google Workspace (Drive + Calendar)
   useEffect(() => {
     return initDriveAuth(
       (user, hasToken) => {
@@ -399,7 +401,7 @@ export default function App() {
     setDriveUserEmail(user.email ?? user.displayName ?? null);
     setHasDriveToken(true);
     showToast(
-      `Google Drive conectado (${user.email ?? 'cuenta activa'}). Ya podés subir resúmenes y comprobantes.`
+      `Google Workspace (Drive y Calendario) conectado (${user.email ?? 'cuenta activa'}).`
     );
   }, [showToast]);
 
@@ -407,7 +409,7 @@ export default function App() {
     await signOutGoogleDrive();
     setDriveUserEmail(null);
     setHasDriveToken(false);
-    showToast('Sesión de Google Drive desconectada.');
+    showToast('Sesión de Google Workspace desconectada.');
   }, [showToast]);
 
   const handleUploadReceipt = useCallback(
@@ -954,20 +956,23 @@ export default function App() {
   // Puerta de seguridad estricta: no montar datos financieros hasta estar AUTHORIZED
   if (!accessResolution || accessResolution.status !== 'AUTHORIZED') {
     return (
-      <AuthGateScreen
-        resolution={accessResolution ?? { status: 'UNAUTHENTICATED' }}
-        loading={authChecking}
-        errorMessage={authError}
-        onSignIn={handleAuthSignIn}
-        onRetryCheck={handleRetryApprovalCheck}
-        onSignOut={handleAuthSignOut}
-      />
+      <MotionConfig reducedMotion="user">
+        <AuthGateScreen
+          resolution={accessResolution ?? { status: 'UNAUTHENTICATED' }}
+          loading={authChecking}
+          errorMessage={authError}
+          onSignIn={handleAuthSignIn}
+          onRetryCheck={handleRetryApprovalCheck}
+          onSignOut={handleAuthSignOut}
+        />
+      </MotionConfig>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <HeaderNav
+    <MotionConfig reducedMotion="user">
+      <div className="min-h-screen bg-[#F6F6F3] text-[#111318]">
+        <HeaderNav
         activeTab={activeTab}
         canEditFinances={canEditFinances}
         userEmail={currentUser?.email ?? null}
@@ -1005,103 +1010,133 @@ export default function App() {
         }}
       />
 
-      <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         {toastMessage && (
           <div
             role="status"
             aria-live="polite"
-            className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-xs font-medium text-emerald-300"
+            className="mb-5 flex items-center justify-between gap-3 rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-2.5 text-xs font-semibold text-[#1D4ED8]"
           >
             <span>{toastMessage}</span>
             <button
               type="button"
               onClick={() => setToastMessage(null)}
               aria-label="Cerrar notificación"
-              className="text-emerald-200 hover:text-white"
+              className="font-semibold text-[#1D4ED8] hover:text-[#111318]"
             >
               Cerrar
             </button>
           </div>
         )}
 
-        {activeTab === 'tablero' && (
-          <DashboardBento
-            matchResult={matchResult}
-            periodItems={periodItems}
-            canEditFinances={canEditFinances}
-            onMarkPaid={(item) => {
-              if (!canEditFinances) return;
-              setPayingItem(item);
-            }}
-            onEditItem={(item) => {
-              if (!canEditFinances) return;
-              setEditingItem(item);
-              setIsEditorOpen(true);
-            }}
-            onQuickUpdateAmount={handleQuickUpdateAmount}
-            onQuickUpdateCapital={handleQuickUpdateCapital}
-            onQuickUpdateDates={handleQuickUpdateDates}
-            onOpenReceipts={(item) => setReceiptsItemId(item.id)}
-            onNavigateTab={setActiveTab}
-          />
-        )}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {activeTab === 'tablero' && (
+              <DashboardBento
+                matchResult={matchResult}
+                periodItems={periodItems}
+                canEditFinances={canEditFinances}
+                minFoodReserveARS={minFoodReserveARS}
+                onMarkPaid={(item) => {
+                  if (!canEditFinances) return;
+                  setPayingItem(item);
+                }}
+                onEditItem={(item) => {
+                  if (!canEditFinances) return;
+                  setEditingItem(item);
+                  setIsEditorOpen(true);
+                }}
+                onQuickUpdateAmount={handleQuickUpdateAmount}
+                onQuickUpdateCapital={handleQuickUpdateCapital}
+                onQuickUpdateDates={handleQuickUpdateDates}
+                onOpenReceipts={(item) => setReceiptsItemId(item.id)}
+                onNavigateTab={setActiveTab}
+              />
+            )}
 
-        {activeTab === 'checklist' && (
-          <PaymentChecklist
-            matchResult={matchResult}
-            periodItems={periodItems}
-            canEditFinances={canEditFinances}
-            onMarkPaid={(item) => {
-              if (!canEditFinances) return;
-              setPayingItem(item);
-            }}
-            onUndoPaid={handleUndoPaid}
-            onEditItem={(item) => {
-              if (!canEditFinances) return;
-              setEditingItem(item);
-              setIsEditorOpen(true);
-            }}
-            onQuickUpdateAmount={handleQuickUpdateAmount}
-            onQuickUpdateDates={handleQuickUpdateDates}
-            onOpenReceipts={(item) => setReceiptsItemId(item.id)}
-            onDeleteItem={(item) => {
-              if (!canEditFinances) return;
-              setConfirmAction({ type: 'delete-item', item });
-            }}
-          />
-        )}
+            {activeTab === 'calendario' && (
+              <CalendarPlannerView
+                activePeriodo={activePeriodo}
+                referenceDateISO={referenceDateISO}
+                matchResult={matchResult}
+                periodItems={periodItems}
+                canEditFinances={canEditFinances}
+                hasWorkspaceToken={hasDriveToken}
+                workspaceUserEmail={driveUserEmail}
+                onSignInWorkspace={handleSignInDrive}
+                onSignOutWorkspace={handleSignOutDrive}
+                onMarkPaid={(item) => {
+                  if (!canEditFinances) return;
+                  setPayingItem(item);
+                }}
+                onNotify={showToast}
+              />
+            )}
 
-        {activeTab === 'quincenas' && (
-          <QuincenalMatcherView
-            matchResult={matchResult}
-            canEditFinances={canEditFinances}
-            minFoodReserveARS={minFoodReserveARS}
-            onChangeMinFoodReserveARS={handleChangeMinFoodReserveARS}
-            onMarkPaid={(item) => {
-              if (!canEditFinances) return;
-              setPayingItem(item);
-            }}
-            onQuickUpdateAmount={handleQuickUpdateAmount}
-            onMoveVentana={handleMoveVentana}
-          />
-        )}
+            {activeTab === 'checklist' && (
+              <PaymentChecklist
+                matchResult={matchResult}
+                periodItems={periodItems}
+                canEditFinances={canEditFinances}
+                onMarkPaid={(item) => {
+                  if (!canEditFinances) return;
+                  setPayingItem(item);
+                }}
+                onUndoPaid={handleUndoPaid}
+                onEditItem={(item) => {
+                  if (!canEditFinances) return;
+                  setEditingItem(item);
+                  setIsEditorOpen(true);
+                }}
+                onQuickUpdateAmount={handleQuickUpdateAmount}
+                onQuickUpdateDates={handleQuickUpdateDates}
+                onOpenReceipts={(item) => setReceiptsItemId(item.id)}
+                onDeleteItem={(item) => {
+                  if (!canEditFinances) return;
+                  setConfirmAction({ type: 'delete-item', item });
+                }}
+              />
+            )}
 
-        {activeTab === 'extincion' && (
-          <ExtinctionTimelineView
-            matchResult={matchResult}
-            periodItems={periodItems}
-            canEditFinances={canEditFinances}
-            minFoodReserveARS={minFoodReserveARS}
-            onChangeMinFoodReserveARS={handleChangeMinFoodReserveARS}
-            onEditItem={(item) => {
-              if (!canEditFinances) return;
-              setEditingItem(item);
-              setIsEditorOpen(true);
-            }}
-            onQuickUpdateAmount={handleQuickUpdateAmount}
-            onQuickUpdateDates={handleQuickUpdateDates}
-          />
-        )}
+            {activeTab === 'quincenas' && (
+              <QuincenalMatcherView
+                matchResult={matchResult}
+                canEditFinances={canEditFinances}
+                minFoodReserveARS={minFoodReserveARS}
+                onChangeMinFoodReserveARS={handleChangeMinFoodReserveARS}
+                onMarkPaid={(item) => {
+                  if (!canEditFinances) return;
+                  setPayingItem(item);
+                }}
+                onQuickUpdateAmount={handleQuickUpdateAmount}
+                onMoveVentana={handleMoveVentana}
+              />
+            )}
+
+            {activeTab === 'extincion' && (
+              <ExtinctionTimelineView
+                matchResult={matchResult}
+                periodItems={periodItems}
+                canEditFinances={canEditFinances}
+                minFoodReserveARS={minFoodReserveARS}
+                onChangeMinFoodReserveARS={handleChangeMinFoodReserveARS}
+                onEditItem={(item) => {
+                  if (!canEditFinances) return;
+                  setEditingItem(item);
+                  setIsEditorOpen(true);
+                }}
+                onQuickUpdateAmount={handleQuickUpdateAmount}
+                onQuickUpdateDates={handleQuickUpdateDates}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       <OfflineIndicator />
@@ -1228,6 +1263,7 @@ export default function App() {
           onConfirm={handleConfirmPendingAction}
         />
       )}
-    </div>
+      </div>
+    </MotionConfig>
   );
 }

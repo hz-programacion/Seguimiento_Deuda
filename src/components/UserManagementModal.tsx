@@ -102,22 +102,22 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[#111318]/45 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="user-mgmt-title"
     >
-      <div className="my-8 w-full max-w-2xl rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
+      <div className="my-8 w-full max-w-2xl rounded-2xl border border-[#E4E3DD] bg-white p-6 shadow-[0_20px_50px_rgba(17,19,24,0.16)]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2
               id="user-mgmt-title"
-              className="flex items-center gap-2 text-lg font-bold text-slate-100"
+              className="flex items-center gap-2 font-display text-lg font-bold text-[#111318]"
             >
-              <Users className="h-5 w-5 text-emerald-400" aria-hidden="true" />
+              <Users className="h-5 w-5 text-[#1D4ED8]" aria-hidden="true" />
               Usuarios, Aprobaciones y Permisos
             </h2>
-            <p className="mt-0.5 text-xs text-slate-400">
+            <p className="mt-0.5 text-xs text-[#525866]">
               Pre-autorizá el Gmail de tu hermana como Colaboradora (solo puede ver movimientos y subir resúmenes/comprobantes; nunca editar montos, fechas ni borrar).
             </p>
           </div>
@@ -125,34 +125,33 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Cerrar gestión de usuarios"
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+            className="rounded-lg p-1.5 text-[#747A88] transition-colors hover:bg-[#F6F6F3] hover:text-[#111318]"
           >
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 
-        {/* 1. Solicitudes pendientes */}
-        <section className="mt-5 rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-100">
-            <UserCheck className="h-4 w-4 text-amber-400" aria-hidden="true" />
+        <section className="mt-5 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] p-4">
+          <h3 className="flex items-center gap-2 text-sm font-bold text-[#111318]">
+            <UserCheck className="h-4 w-4 text-[#D97706]" aria-hidden="true" />
             Solicitudes de Ingreso Pendientes ({pendingRequests.length})
           </h3>
           {pendingRequests.length === 0 ? (
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-[#747A88]">
               No hay solicitudes esperando aprobación en este momento.
             </p>
           ) : (
-            <div className="mt-3 divide-y divide-slate-800">
+            <div className="mt-3 divide-y divide-[#E4E3DD]">
               {pendingRequests.map((req) => (
                 <div
                   key={req.uid}
                   className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-xs font-semibold text-slate-100">
+                    <p className="truncate text-xs font-semibold text-[#111318]">
                       {req.displayName}
                     </p>
-                    <p className="truncate text-[11px] text-slate-400 font-mono-tabular">
+                    <p className="truncate font-mono-tabular text-[11px] text-[#525866]">
                       {req.emailLower}
                     </p>
                   </div>
@@ -176,7 +175,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                           setBusy(false);
                         }
                       }}
-                      className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25"
+                      className="inline-flex items-center gap-1 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-1 text-xs font-semibold text-[#1D4ED8] transition-colors hover:bg-[#DBEAFE]"
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
                       Aprobar Colaboradora
@@ -198,7 +197,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                           setBusy(false);
                         }
                       }}
-                      className="inline-flex items-center gap-1 rounded-md border border-rose-500/40 bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-300 hover:bg-rose-500/20"
+                      className="inline-flex items-center gap-1 rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-2.5 py-1 text-xs font-semibold text-[#B91C1C] transition-colors hover:bg-[#FEE2E2]"
                     >
                       <XCircle className="h-3.5 w-3.5" aria-hidden="true" />
                       Rechazar
@@ -210,10 +209,9 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
           )}
         </section>
 
-        {/* 2. Pre-invitar por correo */}
-        <section className="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-100">
-            <UserPlus className="h-4 w-4 text-cyan-400" aria-hidden="true" />
+        <section className="mt-4 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] p-4">
+          <h3 className="flex items-center gap-2 text-sm font-bold text-[#111318]">
+            <UserPlus className="h-4 w-4 text-[#4338CA]" aria-hidden="true" />
             Pre-autorizar cuenta Google por correo
           </h3>
           <form onSubmit={handleInviteSubmit} className="mt-3 space-y-3">
@@ -221,7 +219,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
               <div>
                 <label
                   htmlFor="invite-email"
-                  className="block text-[11px] font-medium text-slate-300"
+                  className="block text-[11px] font-semibold text-[#525866]"
                 >
                   Gmail del familiar
                 </label>
@@ -231,14 +229,14 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="hermana@gmail.com"
-                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
+                  className="mt-1 w-full rounded-lg border border-[#E4E3DD] bg-white px-3 py-1.5 text-xs text-[#111318]"
                   required
                 />
               </div>
               <div>
                 <label
                   htmlFor="invite-name"
-                  className="block text-[11px] font-medium text-slate-300"
+                  className="block text-[11px] font-semibold text-[#525866]"
                 >
                   Nombre (ej: Hermana)
                 </label>
@@ -249,13 +247,13 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="Hermana"
-                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
+                  className="mt-1 w-full rounded-lg border border-[#E4E3DD] bg-white px-3 py-1.5 text-xs text-[#111318]"
                 />
               </div>
               <div>
                 <label
                   htmlFor="invite-role"
-                  className="block text-[11px] font-medium text-slate-300"
+                  className="block text-[11px] font-semibold text-[#525866]"
                 >
                   Permiso
                 </label>
@@ -263,7 +261,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                   id="invite-role"
                   value={role}
                   onChange={(e) => setRole(e.target.value as HouseholdRole)}
-                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100"
+                  className="mt-1 w-full rounded-lg border border-[#E4E3DD] bg-white px-3 py-1.5 text-xs text-[#111318]"
                 >
                   <option value="HERMANA_COMPROBANTES">
                     Colaboradora (Ver y subir comprobantes)
@@ -276,7 +274,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
               <button
                 type="submit"
                 disabled={busy}
-                className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-60"
+                className="rounded-xl bg-[#1D4ED8] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1E40AF] disabled:opacity-60"
               >
                 Habilitar Acceso
               </button>
@@ -284,8 +282,8 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
           </form>
 
           {activeInvites.length > 0 && (
-            <div className="mt-4 border-t border-slate-800 pt-3">
-              <p className="text-[11px] font-semibold text-slate-400">
+            <div className="mt-4 border-t border-[#E4E3DD] pt-3">
+              <p className="text-[11px] font-semibold text-[#525866]">
                 Invitaciones pendientes de primer ingreso ({activeInvites.length})
               </p>
               <div className="mt-2 space-y-2">
@@ -294,9 +292,9 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                     key={inv.id}
                     className="flex items-center justify-between gap-2 text-xs"
                   >
-                    <span className="truncate text-slate-300 font-mono-tabular">
+                    <span className="truncate font-mono-tabular text-[#111318]">
                       {inv.displayName} ({inv.emailLower}) ·{' '}
-                      <span className="text-cyan-400">
+                      <span className="font-semibold text-[#4338CA]">
                         {inv.role === 'HERMANA_COMPROBANTES'
                           ? 'Colaboradora'
                           : 'Admin'}
@@ -306,7 +304,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                       type="button"
                       disabled={busy}
                       onClick={() => onRevokeInvite(inv)}
-                      className="text-rose-400 hover:text-rose-300 text-[11px] font-medium shrink-0"
+                      className="text-[11px] font-semibold text-[#DC2626] hover:text-[#B91C1C] shrink-0"
                     >
                       Anular
                     </button>
@@ -317,29 +315,30 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
           )}
         </section>
 
-        {/* 3. Miembros actuales */}
-        <section className="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-100">
-            <Shield className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+        <section className="mt-4 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] p-4">
+          <h3 className="flex items-center gap-2 text-sm font-bold text-[#111318]">
+            <Shield className="h-4 w-4 text-[#1D4ED8]" aria-hidden="true" />
             Miembros del Hogar ({members.length})
           </h3>
-          <div className="mt-3 divide-y divide-slate-800">
+          <div className="mt-3 divide-y divide-[#E4E3DD]">
             {members.map((m) => {
               const isSelf = m.uid === currentAdminUid;
               return (
                 <div
                   key={m.uid}
-                  className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:justify-between text-xs"
+                  className="flex flex-col gap-2 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
-                    <p className="truncate font-semibold text-slate-100">
+                    <p className="truncate font-semibold text-[#111318]">
                       {m.displayName} {isSelf ? '(Vos)' : ''}
                     </p>
-                    <p className="truncate text-[11px] text-slate-400 font-mono-tabular">
+                    <p className="truncate font-mono-tabular text-[11px] text-[#525866]">
                       {m.emailLower} ·{' '}
                       <span
                         className={
-                          m.role === 'ADMIN' ? 'text-emerald-400' : 'text-cyan-400'
+                          m.role === 'ADMIN'
+                            ? 'font-semibold text-[#1D4ED8]'
+                            : 'font-semibold text-[#4338CA]'
                         }
                       >
                         {m.role === 'ADMIN'
@@ -349,7 +348,9 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                       ·{' '}
                       <span
                         className={
-                          m.status === 'ACTIVO' ? 'text-emerald-400' : 'text-rose-400'
+                          m.status === 'ACTIVO'
+                            ? 'font-semibold text-[#1D4ED8]'
+                            : 'font-semibold text-[#DC2626]'
                         }
                       >
                         {m.status}
@@ -372,10 +373,10 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                           setBusy(false);
                         }
                       }}
-                      className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium shrink-0 ${
+                      className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold shrink-0 transition-colors ${
                         m.status === 'ACTIVO'
-                          ? 'border-rose-500/40 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20'
-                          : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                          ? 'border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C] hover:bg-[#FEE2E2]'
+                          : 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8] hover:bg-[#DBEAFE]'
                       }`}
                     >
                       <ShieldOff className="h-3.5 w-3.5" aria-hidden="true" />
@@ -389,12 +390,18 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
         </section>
 
         {errorMsg && (
-          <p role="alert" className="mt-3 text-xs font-medium text-rose-400">
+          <p
+            role="alert"
+            className="mt-3 rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-medium text-[#B91C1C]"
+          >
             {errorMsg}
           </p>
         )}
         {statusMsg && (
-          <p role="status" className="mt-3 text-xs font-medium text-emerald-400">
+          <p
+            role="status"
+            className="mt-3 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-2 text-xs font-medium text-[#1D4ED8]"
+          >
             {statusMsg}
           </p>
         )}
@@ -403,7 +410,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700"
+            className="rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-4 py-2 text-xs font-semibold text-[#111318] transition-colors hover:bg-[#EEEDE8]"
           >
             Cerrar
           </button>

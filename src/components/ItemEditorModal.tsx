@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import {
   CategoriaMovimiento,
   ItemFinanciero,
@@ -10,6 +10,7 @@ import {
   buildDateString,
   deriveVentanaFromDia,
   formatPeriodoLabel,
+  validateCardCycleDates,
 } from '../utils/dateUtils';
 import { MoneyUtils } from '../utils/moneyUtils';
 
@@ -25,7 +26,10 @@ const CATEGORIAS: Array<{ value: CategoriaMovimiento; label: string }> = [
   { value: 'SERVICIO_HOGAR', label: 'Servicio del Hogar (Luz, Gas, Agua...)' },
   { value: 'CUOTA_FIJA', label: 'Cuota Fija (plan en cuotas X/N)' },
   { value: 'TARJETA_ROTATIVA', label: 'Tarjeta de Crédito' },
-  { value: 'INGRESO_HABITUAL', label: 'Ingreso Habitual (Sueldo, Jubilación...)' },
+  {
+    value: 'INGRESO_HABITUAL',
+    label: 'Ingreso Habitual (Sueldo, Jubilación...)',
+  },
   { value: 'INGRESO_EXTRA_SAC', label: 'Ingreso Extra / Aguinaldo (SAC)' },
   { value: 'DEUDA_CON_QUITA', label: 'Deuda con Oferta de Quita' },
 ];
@@ -95,6 +99,11 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
+  const cycleCheck = validateCardCycleDates(
+    fechaCierre.trim() || undefined,
+    fechaVencimiento
+  );
+
   const handleVencimientoChange = (newDate: string) => {
     setFechaVencimiento(newDate);
     if (/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
@@ -141,6 +150,14 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
 
     if (fechaCierre && !/^\d{4}-\d{2}-\d{2}$/.test(fechaCierre)) {
       setError('La fecha de cierre debe tener formato válido.');
+      return;
+    }
+
+    if (fechaCierre && !cycleCheck.valid) {
+      setError(
+        cycleCheck.warning ??
+          'La fecha de cierre debe ser anterior a la fecha de vencimiento.'
+      );
       return;
     }
 
@@ -203,12 +220,14 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
         categoria === 'TARJETA_ROTATIVA'
           ? MoneyUtils.fromCents(MoneyUtils.toCents(parsedMonto))
           : undefined,
+      tnaEstimada: editingItem?.tnaEstimada,
       montoOfertaQuitaContado:
         parsedQuita !== undefined && Number.isFinite(parsedQuita)
           ? MoneyUtils.fromCents(MoneyUtils.toCents(parsedQuita))
           : undefined,
       porcentajeQuita: editingItem?.porcentajeQuita,
       notas: notas.trim() || undefined,
+      adjuntos: editingItem?.adjuntos,
     };
 
     onSave(nextItem, Boolean(editingItem && applyToFuture));
@@ -216,21 +235,21 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[#111318]/45 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="item-editor-title"
     >
-      <div className="my-8 w-full max-w-lg rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
+      <div className="my-8 w-full max-w-lg rounded-2xl border border-[#E4E3DD] bg-white p-6 shadow-[0_20px_50px_rgba(17,19,24,0.16)]">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2
               id="item-editor-title"
-              className="text-lg font-bold text-slate-100"
+              className="font-display text-lg font-bold text-[#111318]"
             >
               {editingItem ? 'Editar Movimiento' : 'Nuevo Gasto o Ingreso'}
             </h2>
-            <p className="mt-0.5 text-xs text-slate-400">
+            <p className="mt-0.5 text-xs text-[#525866]">
               Mes: {formatPeriodoLabel(targetPeriodo)} · Cambios independientes por mes.
             </p>
           </div>
@@ -238,9 +257,9 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Cerrar formulario"
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+            className="rounded-lg p-1.5 text-[#747A88] transition-colors hover:bg-[#F6F6F3] hover:text-[#111318]"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 
@@ -248,7 +267,7 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
           <div>
             <label
               htmlFor="item-titulo"
-              className="block text-xs font-medium text-slate-300"
+              className="block text-xs font-semibold text-[#111318]"
             >
               Nombre (servicio, tarjeta, cuota o ingreso)
             </label>
@@ -259,7 +278,7 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
               value={titulo}
               onChange={(e) => setTitulo(e.target.value)}
               placeholder="Ej: Luz Edenor o Tarjeta Patagonia"
-              className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+              className="mt-1.5 w-full rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-3 py-2 text-sm text-[#111318] focus:border-[#1D4ED8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20"
               required
             />
           </div>
@@ -268,7 +287,7 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
             <div>
               <label
                 htmlFor="item-categoria"
-                className="block text-xs font-medium text-slate-300"
+                className="block text-xs font-semibold text-[#111318]"
               >
                 Tipo de movimiento
               </label>
@@ -278,7 +297,7 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
                 onChange={(e) =>
                   handleCategoryChange(e.target.value as CategoriaMovimiento)
                 }
-                className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                className="mt-1.5 w-full rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-3 py-2 text-sm text-[#111318] focus:border-[#1D4ED8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20"
               >
                 {CATEGORIAS.map((c) => (
                   <option key={c.value} value={c.value}>
@@ -291,7 +310,7 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
             <div>
               <label
                 htmlFor="item-monto"
-                className="block text-xs font-medium text-slate-300"
+                className="block text-xs font-semibold text-[#111318]"
               >
                 Monto del mes (ARS)
               </label>
@@ -304,18 +323,17 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
                 value={montoStr}
                 onChange={(e) => setMontoStr(e.target.value)}
                 placeholder="0.00"
-                className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 font-mono-tabular focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                className="mt-1.5 w-full rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-3 py-2 font-mono-tabular text-sm text-[#111318] focus:border-[#1D4ED8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20"
                 required
               />
             </div>
           </div>
 
-          {/* Fechas reales: Cierre + Vencimiento */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label
                 htmlFor="item-fecha-cierre"
-                className="block text-xs font-medium text-slate-300"
+                className="block text-xs font-semibold text-[#111318]"
               >
                 Fecha de cierre (opcional)
               </label>
@@ -324,14 +342,14 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
                 type="date"
                 value={fechaCierre}
                 onChange={(e) => setFechaCierre(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 font-mono-tabular focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                className="mt-1.5 w-full rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-3 py-2 font-mono-tabular text-sm text-[#111318] focus:border-[#1D4ED8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20"
               />
             </div>
 
             <div>
               <label
                 htmlFor="item-fecha-vencimiento"
-                className="block text-xs font-medium text-slate-300"
+                className="block text-xs font-semibold text-[#111318]"
               >
                 Fecha de vencimiento / cobro
               </label>
@@ -340,17 +358,40 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
                 type="date"
                 value={fechaVencimiento}
                 onChange={(e) => handleVencimientoChange(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 font-mono-tabular focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                className="mt-1.5 w-full rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-3 py-2 font-mono-tabular text-sm text-[#111318] focus:border-[#1D4ED8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20"
                 required
               />
             </div>
           </div>
 
+          {fechaCierre && (
+            <div
+              className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 text-xs ${
+                cycleCheck.valid
+                  ? 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]'
+                  : 'border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]'
+              }`}
+            >
+              {cycleCheck.valid ? (
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#1D4ED8]" />
+              ) : (
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#D97706]" />
+              )}
+              <span>
+                {cycleCheck.valid
+                  ? `Ventana válida de pago: ${cycleCheck.windowDays} día${
+                      cycleCheck.windowDays === 1 ? '' : 's'
+                    } entre el cierre y el vencimiento.`
+                  : cycleCheck.warning}
+              </span>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label
                 htmlFor="item-ventana"
-                className="block text-xs font-medium text-slate-300"
+                className="block text-xs font-semibold text-[#111318]"
               >
                 Quincena asignada
               </label>
@@ -358,7 +399,7 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
                 id="item-ventana"
                 value={ventana}
                 onChange={(e) => setVentana(e.target.value as VentanaQuincena)}
-                className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                className="mt-1.5 w-full rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-3 py-2 text-sm text-[#111318] focus:border-[#1D4ED8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20"
               >
                 <option value="Q1_DIAS_1_AL_14">1° Quincena (01 al 14)</option>
                 <option value="Q2_DIAS_15_AL_31">2° Quincena (15 al 31)</option>
@@ -368,7 +409,7 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
             <div>
               <label
                 htmlFor="item-bolsillo"
-                className="block text-xs font-medium text-slate-300"
+                className="block text-xs font-semibold text-[#111318]"
               >
                 ¿Con qué ingreso se paga? (Bolsillo)
               </label>
@@ -379,7 +420,7 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
                 value={bolsillo}
                 onChange={(e) => setBolsillo(e.target.value)}
                 placeholder="Seguridad 1°Q"
-                className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                className="mt-1.5 w-full rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-3 py-2 text-sm text-[#111318] focus:border-[#1D4ED8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20"
                 required
               />
             </div>
@@ -389,7 +430,7 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
             <div>
               <label
                 htmlFor="item-subgrupo"
-                className="block text-xs font-medium text-slate-300"
+                className="block text-xs font-semibold text-[#111318]"
               >
                 Grupo / Tarjeta (ej: Tarjeta Carrefour)
               </label>
@@ -399,17 +440,17 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
                 maxLength={80}
                 value={subgrupo}
                 onChange={(e) => setSubgrupo(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                className="mt-1.5 w-full rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-3 py-2 text-sm text-[#111318] focus:border-[#1D4ED8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20"
               />
             </div>
 
             <div className="flex items-end pb-2">
-              <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-200 cursor-pointer">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-[#111318]">
                 <input
                   type="checkbox"
                   checked={esCuotaFija}
                   onChange={(e) => setEsCuotaFija(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-emerald-400"
+                  className="h-4 w-4 rounded border-[#D4D2CA] accent-[#1D4ED8]"
                 />
                 Es plan en cuotas fijas (termina solo)
               </label>
@@ -417,11 +458,11 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
           </div>
 
           {esCuotaFija && (
-            <div className="grid grid-cols-1 gap-4 rounded-lg border border-slate-800 bg-slate-950/60 p-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] p-3.5 sm:grid-cols-3">
               <div>
                 <label
                   htmlFor="item-cuota-actual"
-                  className="block text-xs font-medium text-slate-300"
+                  className="block text-xs font-medium text-[#525866]"
                 >
                   Cuota actual
                 </label>
@@ -432,13 +473,13 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
                   max="240"
                   value={cuotaActualStr}
                   onChange={(e) => setCuotaActualStr(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 font-mono-tabular"
+                  className="mt-1 w-full rounded-lg border border-[#E4E3DD] bg-white px-3 py-1.5 font-mono-tabular text-sm text-[#111318]"
                 />
               </div>
               <div>
                 <label
                   htmlFor="item-cuotas-totales"
-                  className="block text-xs font-medium text-slate-300"
+                  className="block text-xs font-medium text-[#525866]"
                 >
                   Total cuotas
                 </label>
@@ -449,13 +490,13 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
                   max="240"
                   value={cuotasTotalesStr}
                   onChange={(e) => setCuotasTotalesStr(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 font-mono-tabular"
+                  className="mt-1 w-full rounded-lg border border-[#E4E3DD] bg-white px-3 py-1.5 font-mono-tabular text-sm text-[#111318]"
                 />
               </div>
               <div>
                 <label
                   htmlFor="item-mes-fin"
-                  className="block text-xs font-medium text-slate-300"
+                  className="block text-xs font-medium text-[#525866]"
                 >
                   Último mes
                 </label>
@@ -466,7 +507,7 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
                   value={mesFinEstimado}
                   onChange={(e) => setMesFinEstimado(e.target.value)}
                   placeholder="Jun 2027"
-                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100"
+                  className="mt-1 w-full rounded-lg border border-[#E4E3DD] bg-white px-3 py-1.5 text-sm text-[#111318]"
                 />
               </div>
             </div>
@@ -474,11 +515,11 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
 
           {(categoria === 'TARJETA_ROTATIVA' ||
             categoria === 'DEUDA_CON_QUITA') && (
-            <div className="grid grid-cols-1 gap-4 rounded-lg border border-slate-800 bg-slate-950/60 p-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] p-3.5 sm:grid-cols-2">
               <div>
                 <label
                   htmlFor="item-saldo-capital"
-                  className="block text-xs font-medium text-slate-300"
+                  className="block text-xs font-medium text-[#525866]"
                 >
                   Saldo total adeudado (ARS)
                 </label>
@@ -489,14 +530,14 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
                   min="0"
                   value={saldoCapitalStr}
                   onChange={(e) => setSaldoCapitalStr(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 font-mono-tabular"
+                  className="mt-1 w-full rounded-lg border border-[#E4E3DD] bg-white px-3 py-1.5 font-mono-tabular text-sm text-[#111318]"
                 />
               </div>
               {categoria === 'DEUDA_CON_QUITA' && (
                 <div>
                   <label
                     htmlFor="item-quita-contado"
-                    className="block text-xs font-medium text-slate-300"
+                    className="block text-xs font-medium text-[#525866]"
                   >
                     Oferta contado con quita (ARS)
                   </label>
@@ -507,7 +548,7 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
                     min="0"
                     value={ofertaQuitaStr}
                     onChange={(e) => setOfertaQuitaStr(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100 font-mono-tabular"
+                    className="mt-1 w-full rounded-lg border border-[#E4E3DD] bg-white px-3 py-1.5 font-mono-tabular text-sm text-[#111318]"
                   />
                 </div>
               )}
@@ -517,7 +558,7 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
           <div>
             <label
               htmlFor="item-notas"
-              className="block text-xs font-medium text-slate-300"
+              className="block text-xs font-semibold text-[#111318]"
             >
               Notas opcionales
             </label>
@@ -527,17 +568,17 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
               maxLength={1000}
               value={notas}
               onChange={(e) => setNotas(e.target.value)}
-              className="mt-1.5 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+              className="mt-1.5 w-full rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-3 py-2 text-xs text-[#111318] focus:border-[#1D4ED8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20"
             />
           </div>
 
           {editingItem && hasFuturePeriods && (
-            <label className="flex items-start gap-2.5 rounded-lg border border-cyan-500/30 bg-cyan-500/5 p-3 text-xs text-cyan-200 cursor-pointer">
+            <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] p-3 text-xs text-[#1D4ED8]">
               <input
                 type="checkbox"
                 checked={applyToFuture}
                 onChange={(e) => setApplyToFuture(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-emerald-400"
+                className="mt-0.5 h-4 w-4 rounded border-[#BFDBFE] accent-[#1D4ED8]"
               />
               <span>
                 Aplicar también estos días de cierre/vencimiento y monto a los{' '}
@@ -547,7 +588,10 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
           )}
 
           {error && (
-            <p role="alert" className="text-xs font-medium text-rose-400">
+            <p
+              role="alert"
+              className="rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-medium text-[#B91C1C]"
+            >
               {error}
             </p>
           )}
@@ -556,13 +600,13 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700"
+              className="rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-4 py-2 text-xs font-semibold text-[#111318] transition-colors hover:bg-[#EEEDE8]"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-emerald-400"
+              className="rounded-xl bg-[#1D4ED8] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1E40AF]"
             >
               {editingItem ? 'Guardar Cambios' : 'Agregar Registro'}
             </button>

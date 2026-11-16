@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { motion } from 'motion/react';
 import {
   AlertTriangle,
   ArrowUpRight,
+  Calendar,
   CheckCircle2,
+  ChevronDown,
   Clock,
   CreditCard,
   Paperclip,
@@ -18,9 +21,17 @@ import {
   ItemFinanciero,
   PrioridadPago,
 } from '../types/finance';
-import { formatPeriodoLabel, formatShortDateAR } from '../utils/dateUtils';
+import {
+  formatPeriodoLabel,
+  formatShortDateAR,
+  validateCardCycleDates,
+} from '../utils/dateUtils';
 import { MoneyUtils } from '../utils/moneyUtils';
-import { isIncomeCategory } from '../utils/cashFlowMatcher';
+import {
+  computeCashflowWaterfall,
+  estimateMonthlyCardInterestCents,
+  isIncomeCategory,
+} from '../utils/cashFlowMatcher';
 import { InlineAmountEditor } from './InlineAmountEditor';
 import { InlineDateEditor } from './InlineDateEditor';
 
@@ -28,6 +39,7 @@ interface DashboardBentoProps {
   matchResult: CashFlowMatchResult;
   periodItems: ItemFinanciero[];
   canEditFinances: boolean;
+  minFoodReserveARS?: number;
   onMarkPaid: (item: ItemFinanciero) => void;
   onEditItem: (item: ItemFinanciero) => void;
   onQuickUpdateAmount: (item: ItemFinanciero, newAmount: number) => void;
@@ -40,17 +52,50 @@ interface DashboardBentoProps {
   onNavigateTab: (tab: AppTab) => void;
 }
 
-function getPriorityLabel(p: PrioridadPago): {
+function getPriorityText(p: PrioridadPago): {
   text: string;
   className: string;
 } {
   if (p === 'CRITICA') {
-    return { text: 'Urgente', className: 'text-rose-400' };
+    return { text: 'Urgente', className: 'text-[#DC2626]' };
   }
   if (p === 'ALTA') {
-    return { text: 'Pronto', className: 'text-amber-400' };
+    return { text: 'Pronto', className: 'text-[#B45309]' };
   }
-  return { text: 'Programado', className: 'text-slate-400' };
+  return { text: 'Programado', className: 'text-[#747A88]' };
+}
+
+function getBankingIndicator(status: BankingPaymentStatus): {
+  text: string;
+  dotClass: string;
+  textClass: string;
+} {
+  if (status === 'PAGAR_AHORA') {
+    return {
+      text: 'Pagar ahora',
+      dotClass: 'bg-[#1D4ED8]',
+      textClass: 'text-[#1D4ED8]',
+    };
+  }
+  if (status === 'ESPERAR_CIERRE') {
+    return {
+      text: 'Esperar cierre',
+      dotClass: 'bg-[#D97706]',
+      textClass: 'text-[#B45309]',
+    };
+  }
+  if (status === 'EXCEDE_TOPE_COMIDA') {
+    return {
+      text: 'Excede tope comida',
+      dotClass: 'bg-[#DC2626]',
+      textClass: 'text-[#B91C1C]',
+    };
+  }
+  return {
+    text: 'Pagado',
+    dotClass: 'bg-[#9CA3AF]',
+    textClass: 'text-[#525866]',
+  };
 }
 
 const ReceiptsIconButton: React.FC<{
@@ -66,11 +111,11 @@ const ReceiptsIconButton: React.FC<{
       aria-label={`Comprobantes de ${item.titulo}`}
       title="Resúmenes y comprobantes en Google Drive"
       className={`inline-flex items-center gap-1 rounded-md border transition-colors shrink-0 ${
-        compact ? 'px-1.5 py-0.5 text-[11px]' : 'px-1.5 py-1 text-[11px]'
+        compact ? 'px-1.5 py-0.5 text-[11px]' : 'px-2 py-1 text-[11px]'
       } ${
         count > 0
-          ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20'
-          : 'border-slate-800 bg-slate-950 text-slate-400 hover:border-slate-700 hover:text-slate-100'
+          ? 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8] hover:bg-[#DBEAFE]'
+          : 'border-[#E4E3DD] bg-[#F6F6F3] text-[#525866] hover:border-[#D4D2CA] hover:text-[#111318]'
       }`}
     >
       <Paperclip className="h-3 w-3" aria-hidden="true" />
@@ -81,39 +126,11 @@ const ReceiptsIconButton: React.FC<{
   );
 };
 
-function getBankingBadge(status: BankingPaymentStatus): {
-  text: string;
-  className: string;
-} {
-  if (status === 'PAGAR_AHORA') {
-    return {
-      text: 'Pagar ahora',
-      className:
-        'border border-emerald-500/35 bg-emerald-500/10 text-emerald-300',
-    };
-  }
-  if (status === 'ESPERAR_CIERRE') {
-    return {
-      text: 'Esperar cierre',
-      className: 'border border-cyan-500/35 bg-cyan-500/10 text-cyan-300',
-    };
-  }
-  if (status === 'EXCEDE_TOPE_COMIDA') {
-    return {
-      text: 'Excede tope comida',
-      className: 'border border-amber-500/35 bg-amber-500/10 text-amber-300',
-    };
-  }
-  return {
-    text: 'Pagado',
-    className: 'border border-slate-700 bg-slate-800 text-slate-300',
-  };
-}
-
 export const DashboardBento: React.FC<DashboardBentoProps> = ({
   matchResult,
   periodItems,
   canEditFinances,
+  minFoodReserveARS = 900000,
   onMarkPaid,
   onEditItem,
   onQuickUpdateAmount,
@@ -122,6 +139,8 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
   onOpenReceipts,
   onNavigateTab,
 }) => {
+  const [showAllQueue, setShowAllQueue] = useState(false);
+
   const {
     referenceDateISO,
     summary,
@@ -133,6 +152,20 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
     colaPrioridad,
     simuladorExcedente,
   } = matchResult;
+
+  const waterfall = computeCashflowWaterfall(
+    matchResult,
+    Math.round(minFoodReserveARS * 100)
+  );
+  const totalIngresos = Math.max(1, waterfall.ingresosTotalesCents);
+  const pctPagado = (waterfall.pagadoCents / totalIngresos) * 100;
+  const pctPendienteVentana =
+    (waterfall.pendienteEnVentanaCents / totalIngresos) * 100;
+  const pctEsperandoCierre =
+    (waterfall.esperandoCierreCents / totalIngresos) * 100;
+  const pctComidaProt =
+    (waterfall.reservaComidaProtegidaCents / totalIngresos) * 100;
+  const pctExcedente = (waterfall.excedenteRealCents / totalIngresos) * 100;
 
   const extinguishedItems = periodItems.filter(
     (i) => i.estado === 'EXTINGUIDO'
@@ -167,45 +200,63 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
       i.estado !== 'EXTINGUIDO'
   );
 
+  const visibleQueue = showAllQueue
+    ? colaPrioridad
+    : colaPrioridad.slice(0, 8);
+
   return (
     <div className="space-y-6">
-      {/* Encabezado contextual */}
-      <div className="flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between">
+      {/* Encabezado limpio del período */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-100">
-            Resumen · {formatPeriodoLabel(summary.periodo)}
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#747A88]">
+            Tablero de Tesorería
+          </p>
+          <h1 className="mt-0.5 font-display text-2xl font-bold tracking-tight text-[#111318] sm:text-3xl">
+            {formatPeriodoLabel(summary.periodo)}
           </h1>
-          <p className="text-sm text-slate-400">
+          <p className="mt-1 text-xs text-[#525866] sm:text-sm">
             {canEditFinances
-              ? 'Tocá cualquier fecha, monto o el clip para adjuntar resúmenes y comprobantes en Drive.'
-              : 'Vista protegida de solo lectura: podés consultar vencimientos y subir resúmenes o comprobantes en Google Drive.'}
+              ? 'Tocá cualquier fecha o monto para ajustarlo directo, o abrí el Calendario para agendar recordatorios.'
+              : 'Vista protegida de solo lectura: consultá vencimientos y subí resúmenes o comprobantes en Google Drive.'}
           </p>
         </div>
-        <div className="text-xs text-slate-400 font-mono-tabular">
-          {colaPrioridad.length} pagos pendientes ·{' '}
-          <span className="text-slate-200 font-semibold">
-            {MoneyUtils.formatARSCents(summary.totalPendienteCents)}
-          </span>{' '}
-          por abonar
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => onNavigateTab('calendario')}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1.5 text-xs font-semibold text-[#1D4ED8] transition-colors hover:bg-[#DBEAFE]"
+          >
+            <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+            Explorar Calendario
+          </button>
+          <div className="font-mono-tabular text-xs text-[#525866]">
+            {colaPrioridad.length} pendiente{colaPrioridad.length === 1 ? '' : 's'} ·{' '}
+            <span className="font-bold text-[#111318]">
+              {MoneyUtils.formatARSCents(summary.totalPendienteCents)}
+            </span>{' '}
+            por abonar
+          </div>
         </div>
       </div>
 
-      {/* Alerta Temprana de Descalce Quincenal */}
+      {/* Alerta temprana de faltante quincenal */}
       {alertaDescalce.hayDescalce && (
         <div
           role="alert"
-          className="flex flex-col gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 sm:flex-row sm:items-center sm:justify-between"
+          className="flex flex-col gap-3 rounded-2xl border border-[#FDE68A] bg-[#FFFBEB] p-4 sm:flex-row sm:items-center sm:justify-between"
         >
           <div className="flex items-start gap-3">
             <AlertTriangle
-              className="mt-0.5 h-5 w-5 shrink-0 text-amber-400"
+              className="mt-0.5 h-5 w-5 shrink-0 text-[#D97706]"
               aria-hidden="true"
             />
             <div className="space-y-1">
-              <p className="text-sm font-semibold text-amber-300">
-                Falta plata en la 1° Quincena (Días 01 al 14)
+              <p className="text-sm font-bold text-[#92400E]">
+                Faltante en la 1° Quincena (Días 01 al 14)
               </p>
-              <p className="text-xs text-amber-200/90 leading-relaxed">
+              <p className="text-xs leading-relaxed text-[#78350F]">
                 {alertaDescalce.mensaje}
               </p>
             </div>
@@ -213,196 +264,308 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
           <button
             type="button"
             onClick={() => onNavigateTab('quincenas')}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/40 bg-slate-950/60 px-3 py-2 text-xs font-semibold text-amber-300 hover:bg-slate-900 whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#F59E0B]/40 bg-white px-3.5 py-2 text-xs font-semibold text-[#92400E] transition-colors hover:bg-[#FEF3C7] whitespace-nowrap shrink-0"
           >
-            Ver Quincenas
+            <span>Ajustar Quincenas</span>
             <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </div>
       )}
 
-      {/* 4 KPIs Principales */}
-      <div
-        data-testid="kpi-grid"
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
+      {/* Banda Hero Unificada */}
+      <section
+        aria-label="Resumen financiero principal"
+        className="rounded-2xl border border-[#E4E3DD] bg-white p-5 shadow-[0_1px_2px_rgba(17,19,24,0.03)] sm:p-6"
       >
-        {/* KPI 1: Ingresos Totales */}
-        <article className="flex flex-col justify-between rounded-xl border border-slate-800/90 bg-slate-900/75 p-5 transition-colors hover:border-slate-700/90">
-          <div>
-            <p className="text-xs font-medium text-slate-400">
-              Ingresos del Mes
-            </p>
-            <p
-              data-testid="kpi-ingresos"
-              className="mt-2 text-2xl font-bold tracking-tight text-emerald-400 font-mono-tabular"
-            >
-              {MoneyUtils.formatARSCents(summary.ingresosTotalesCents)}
-            </p>
-          </div>
-          <div className="mt-3.5 border-t border-slate-800/80 pt-2.5 text-[11px] text-slate-400 font-mono-tabular">
-            Base {MoneyUtils.formatCompactCents(summary.ingresosHabitualesCents)}
-            {summary.ingresosSacCents > 0
-              ? ` · SAC +${MoneyUtils.formatCompactCents(summary.ingresosSacCents)}`
-              : ''}
-          </div>
-        </article>
+        <div
+          data-testid="kpi-grid"
+          className="grid grid-cols-1 gap-6 lg:grid-cols-12"
+        >
+          {/* Foco Principal (5 cols): Plata Libre para Comida */}
+          <div className="flex flex-col justify-between border-b border-[#EEEDE8] pb-6 lg:col-span-5 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-6">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-[#1D4ED8]">
+                  <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  Plata Libre para Comida
+                </span>
+                <span className="font-mono-tabular text-[11px] text-[#747A88]">
+                  Mín. {MoneyUtils.formatARS(minFoodReserveARS)}
+                </span>
+              </div>
 
-        {/* KPI 2: Obligaciones Fijas Totales (Micro-grid sin truncamiento) */}
-        <article className="flex flex-col justify-between rounded-xl border border-slate-800/90 bg-slate-900/75 p-5 transition-colors hover:border-slate-700/90">
-          <div>
-            <p className="text-xs font-medium text-slate-400">
-              Gastos y Deudas Fijas
-            </p>
-            <p
-              data-testid="kpi-obligaciones"
-              className="mt-2 text-2xl font-bold tracking-tight text-slate-100 font-mono-tabular"
-            >
-              {MoneyUtils.formatARSCents(summary.obligacionesFijasTotalesCents)}
-            </p>
-          </div>
-          <div
-            data-testid="kpi-obligaciones-desglose"
-            className="mt-3.5 grid grid-cols-3 gap-2 border-t border-slate-800/80 pt-2.5 text-[11px] font-mono-tabular"
-          >
-            <div>
-              <span className="block text-[10px] font-sans text-slate-500">
-                Serv.
-              </span>
-              <span className="font-medium text-slate-300">
-                {MoneyUtils.formatCompactCents(summary.serviciosHogarCents)}
-              </span>
-            </div>
-            <div>
-              <span className="block text-[10px] font-sans text-slate-500">
-                Cuotas
-              </span>
-              <span className="font-medium text-slate-300">
-                {MoneyUtils.formatCompactCents(summary.cuotasFijasCents)}
-              </span>
-            </div>
-            <div>
-              <span className="block text-[10px] font-sans text-slate-500">
-                Tarj.
-              </span>
-              <span className="font-medium text-rose-300">
-                {MoneyUtils.formatCompactCents(summary.tarjetasTotalesCents)}
-              </span>
-            </div>
-          </div>
-        </article>
-
-        {/* KPI 3: Avance de Pagos */}
-        <article className="flex flex-col justify-between rounded-xl border border-slate-800/90 bg-slate-900/75 p-5 transition-colors hover:border-slate-700/90">
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-medium text-slate-400">
-                Ya Pagado Este Mes
-              </p>
-              <span
-                data-testid="kpi-avance-pct"
-                className="text-xs font-semibold text-amber-400 font-mono-tabular"
+              <p
+                data-testid="kpi-colchon-comida"
+                style={{ fontSize: 'clamp(1.85rem, 3vw, 2.55rem)' }}
+                className={`mt-3 font-display font-bold leading-none tracking-tight font-mono-tabular ${
+                  summary.colchonComidaCents >= 0
+                    ? 'text-[#111318]'
+                    : 'text-[#DC2626]'
+                }`}
               >
-                {summary.porcentajeAvance.toFixed(1)}%
+                {MoneyUtils.formatARSCents(summary.colchonComidaCents)}
+              </p>
+
+              <p className="mt-2.5 text-xs leading-relaxed text-[#525866]">
+                Disponible real del mes después de cubrir todas las obligaciones fijas.
+                {waterfall.excedenteRealCents > 0 && (
+                  <>
+                    {' '}
+                    Incluye{' '}
+                    <span className="font-mono-tabular font-semibold text-[#1D4ED8]">
+                      +{MoneyUtils.formatARSCents(waterfall.excedenteRealCents)}
+                    </span>{' '}
+                    de margen por encima de tu mínimo de comida.
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* 3 Lecturas KPI limpias (7 cols) */}
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-3 lg:col-span-7">
+            {/* Ingresos */}
+            <div className="flex flex-col justify-between border-b border-[#EEEDE8] pb-4 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-4">
+              <div>
+                <p className="text-xs font-medium text-[#525866]">
+                  Ingresos del Mes
+                </p>
+                <p
+                  data-testid="kpi-ingresos"
+                  className="mt-2 font-mono-tabular text-xl font-bold tracking-tight text-[#1D4ED8]"
+                >
+                  {MoneyUtils.formatARSCents(summary.ingresosTotalesCents)}
+                </p>
+              </div>
+              <p className="mt-3 font-mono-tabular text-[11px] text-[#747A88]">
+                Base {MoneyUtils.formatCompactCents(summary.ingresosHabitualesCents)}
+                {summary.ingresosSacCents > 0
+                  ? ` · SAC +${MoneyUtils.formatCompactCents(summary.ingresosSacCents)}`
+                  : ''}
+              </p>
+            </div>
+
+            {/* Obligaciones */}
+            <div className="flex flex-col justify-between border-b border-[#EEEDE8] pb-4 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-4">
+              <div>
+                <p className="text-xs font-medium text-[#525866]">
+                  Gastos y Deudas Fijas
+                </p>
+                <p
+                  data-testid="kpi-obligaciones"
+                  className="mt-2 font-mono-tabular text-xl font-bold tracking-tight text-[#111318]"
+                >
+                  {MoneyUtils.formatARSCents(
+                    summary.obligacionesFijasTotalesCents
+                  )}
+                </p>
+              </div>
+              <div
+                data-testid="kpi-obligaciones-desglose"
+                className="mt-3 grid grid-cols-3 gap-2 font-mono-tabular text-[11px]"
+              >
+                <div>
+                  <span className="block font-sans text-[10px] text-[#747A88]">
+                    Serv.
+                  </span>
+                  <span className="font-semibold text-[#111318]">
+                    {MoneyUtils.formatCompactCents(summary.serviciosHogarCents)}
+                  </span>
+                </div>
+                <div>
+                  <span className="block font-sans text-[10px] text-[#747A88]">
+                    Cuotas
+                  </span>
+                  <span className="font-semibold text-[#111318]">
+                    {MoneyUtils.formatCompactCents(summary.cuotasFijasCents)}
+                  </span>
+                </div>
+                <div>
+                  <span className="block font-sans text-[10px] text-[#747A88]">
+                    Tarj.
+                  </span>
+                  <span className="font-semibold text-[#DC2626]">
+                    {MoneyUtils.formatCompactCents(summary.tarjetasTotalesCents)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Avance Pagado */}
+            <div className="flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-[#525866]">
+                    Ya Pagado
+                  </p>
+                  <span
+                    data-testid="kpi-avance-pct"
+                    className="font-mono-tabular text-xs font-bold text-[#1D4ED8]"
+                  >
+                    {summary.porcentajeAvance.toFixed(1)}%
+                  </span>
+                </div>
+                <p
+                  data-testid="kpi-pagado"
+                  className="mt-2 font-mono-tabular text-xl font-bold tracking-tight text-[#111318]"
+                >
+                  {MoneyUtils.formatARSCents(summary.totalPagadoCents)}
+                </p>
+                <div
+                  className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-[#EEEDE8]"
+                  role="progressbar"
+                  aria-valuenow={summary.porcentajeAvance}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label="Porcentaje de obligaciones pagadas"
+                >
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${summary.porcentajeAvance}%` }}
+                    transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                    className="h-full bg-[#1D4ED8]"
+                  />
+                </div>
+              </div>
+              <p className="mt-3 font-mono-tabular text-[11px] text-[#747A88]">
+                Falta pagar {MoneyUtils.formatCompactCents(summary.totalPendienteCents)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Cascada Visual de Ingresos */}
+        {waterfall.ingresosTotalesCents > 0 && (
+          <div className="mt-6 border-t border-[#EEEDE8] pt-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="font-semibold text-[#111318]">
+                Distribución real de tus ingresos del mes
+              </span>
+              <span className="font-mono-tabular text-[11px] text-[#747A88]">
+                100% = {MoneyUtils.formatARSCents(waterfall.ingresosTotalesCents)}
               </span>
             </div>
-            <p
-              data-testid="kpi-pagado"
-              className="mt-2 text-2xl font-bold tracking-tight text-slate-100 font-mono-tabular"
-            >
-              {MoneyUtils.formatARSCents(summary.totalPagadoCents)}
-            </p>
-            <div
-              className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-800"
-              role="progressbar"
-              aria-valuenow={summary.porcentajeAvance}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label="Porcentaje de obligaciones pagadas"
-            >
-              <div
-                className="h-full bg-emerald-400 transition-all duration-300"
-                style={{ width: `${summary.porcentajeAvance}%` }}
-              />
+
+            <div className="mt-2.5 flex h-2.5 w-full overflow-hidden rounded-full bg-[#EEEDE8]">
+              {pctPagado > 0 && (
+                <div
+                  style={{ width: `${pctPagado}%` }}
+                  title={`Pagado: ${MoneyUtils.formatARSCents(waterfall.pagadoCents)}`}
+                  className="h-full bg-[#1D4ED8] transition-all duration-300"
+                />
+              )}
+              {pctPendienteVentana > 0 && (
+                <div
+                  style={{ width: `${pctPendienteVentana}%` }}
+                  title={`Pendiente en ventana: ${MoneyUtils.formatARSCents(waterfall.pendienteEnVentanaCents)}`}
+                  className="h-full bg-[#4B5563] transition-all duration-300"
+                />
+              )}
+              {pctEsperandoCierre > 0 && (
+                <div
+                  style={{ width: `${pctEsperandoCierre}%` }}
+                  title={`Esperando cierre: ${MoneyUtils.formatARSCents(waterfall.esperandoCierreCents)}`}
+                  className="h-full bg-[#D97706] transition-all duration-300"
+                />
+              )}
+              {pctComidaProt > 0 && (
+                <div
+                  style={{ width: `${pctComidaProt}%` }}
+                  title={`Reserva comida protegida: ${MoneyUtils.formatARSCents(waterfall.reservaComidaProtegidaCents)}`}
+                  className="h-full bg-[#93C5FD] transition-all duration-300"
+                />
+              )}
+              {pctExcedente > 0 && (
+                <div
+                  style={{ width: `${pctExcedente}%` }}
+                  title={`Excedente libre: ${MoneyUtils.formatARSCents(waterfall.excedenteRealCents)}`}
+                  className="h-full bg-[#4338CA] transition-all duration-300"
+                />
+              )}
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-[#525866] font-mono-tabular">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-[#1D4ED8]" />
+                Pagado {MoneyUtils.formatCompactCents(waterfall.pagadoCents)}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-[#4B5563]" />
+                Pendiente{' '}
+                {MoneyUtils.formatCompactCents(waterfall.pendienteEnVentanaCents)}
+              </span>
+              {waterfall.esperandoCierreCents > 0 && (
+                <span className="inline-flex items-center gap-1.5 text-[#B45309]">
+                  <span className="h-2 w-2 rounded-full bg-[#D97706]" />
+                  Espera cierre{' '}
+                  {MoneyUtils.formatCompactCents(waterfall.esperandoCierreCents)}
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1.5 text-[#1D4ED8]">
+                <span className="h-2 w-2 rounded-full bg-[#93C5FD]" />
+                Comida mín.{' '}
+                {MoneyUtils.formatCompactCents(
+                  waterfall.reservaComidaProtegidaCents
+                )}
+              </span>
+              {waterfall.excedenteRealCents > 0 && (
+                <span className="inline-flex items-center gap-1.5 text-[#4338CA]">
+                  <span className="h-2 w-2 rounded-full bg-[#4338CA]" />
+                  Margen extra{' '}
+                  {MoneyUtils.formatCompactCents(waterfall.excedenteRealCents)}
+                </span>
+              )}
             </div>
           </div>
-          <div className="mt-2.5 border-t border-slate-800/80 pt-2.5 text-[11px] text-slate-400 font-mono-tabular">
-            Falta pagar {MoneyUtils.formatARSCents(summary.totalPendienteCents)}
-          </div>
-        </article>
+        )}
+      </section>
 
-        {/* KPI 4: Caja Libre Protegida para Comida */}
-        <article className="flex flex-col justify-between rounded-xl border border-emerald-500/40 bg-emerald-950/15 p-5 transition-colors hover:border-emerald-500/60">
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-semibold text-emerald-300">
-                Plata Libre para Comida
-              </p>
-              <ShieldCheck
-                className="h-4 w-4 text-emerald-400 shrink-0"
-                aria-hidden="true"
-              />
-            </div>
-            <p
-              data-testid="kpi-colchon-comida"
-              className={`mt-2 text-2xl font-bold tracking-tight font-mono-tabular ${
-                summary.colchonComidaCents >= 0
-                  ? 'text-emerald-400'
-                  : 'text-rose-500'
-              }`}
-            >
-              {MoneyUtils.formatARSCents(summary.colchonComidaCents)}
-            </p>
-          </div>
-          <div className="mt-3.5 border-t border-emerald-500/20 pt-2.5 text-[11px] text-slate-300">
-            Disponible real después de pagar todas las cuentas.
-          </div>
-        </article>
-      </div>
-
-      {/* Sección Alivio Ganado / Cuotas Extinguidas */}
+      {/* Alivio Ganado / Cuotas Extinguidas */}
       {extinguishedItems.length > 0 && (
         <section
           aria-labelledby="alivio-ganado-heading"
           data-testid="alivio-ganado-section"
-          className="rounded-xl border border-cyan-500/40 bg-slate-900/80 p-5"
+          className="rounded-2xl border border-[#C7D2FE] bg-[#EEF2FF]/60 p-5 sm:p-6"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2
                 id="alivio-ganado-heading"
-                className="flex items-center gap-2 text-base font-semibold text-cyan-300"
+                className="flex items-center gap-2 font-display text-base font-bold text-[#4338CA]"
               >
                 <TrendingDown className="h-4 w-4" aria-hidden="true" />
                 Alivio Ganado · Cuotas Finalizadas
               </h2>
-              <p className="mt-1 text-xs text-slate-400">
-                Cuotas que ya terminaron y dejan más plata libre todos los meses.
+              <p className="mt-0.5 text-xs text-[#525866]">
+                Cuotas que ya terminaron y dejan más dinero disponible todos los meses.
               </p>
             </div>
             <div className="text-left sm:text-right">
-              <p className="text-xs text-slate-400">Ahorro mensual liberado</p>
-              <p className="text-xl font-bold text-cyan-400 font-mono-tabular">
+              <p className="text-[11px] uppercase tracking-wider text-[#747A88]">
+                Ahorro mensual liberado
+              </p>
+              <p className="font-mono-tabular text-xl font-bold text-[#4338CA]">
                 +{MoneyUtils.formatARSCents(summary.alivioMensualGanadoCents)}/mes
               </p>
             </div>
           </div>
 
-          <div className="mt-4 divide-y divide-slate-800 border-t border-slate-800">
+          <div className="mt-4 divide-y divide-[#C7D2FE]/60 border-t border-[#C7D2FE]">
             {extinguishedItems.map((ext) => (
               <div
                 key={ext.id}
                 className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div>
-                  <p className="text-sm font-medium text-slate-100">
+                  <p className="text-sm font-semibold text-[#111318]">
                     {ext.titulo}
                   </p>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-[#525866]">
                     {ext.notas ??
                       `Finalizada en cuota ${ext.cuotaActual}/${ext.cuotasTotales}`}
                   </p>
                 </div>
-                <div className="text-xs font-semibold text-cyan-400 font-mono-tabular">
+                <div className="font-mono-tabular text-xs font-bold text-[#4338CA]">
                   FINALIZADA · Liberó{' '}
                   {MoneyUtils.formatARS(
                     ext.montoLiberadoAlExtinguirse ?? ext.montoPactado
@@ -414,52 +577,52 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
         </section>
       )}
 
-      {/* Bento Grid Principal */}
+      {/* Grid Principal: Qué pagar primero (7 cols) + Tarjetas & Oportunidades (5 cols) */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Qué pagar primero este mes (7 cols) */}
         <section
           aria-labelledby="priority-queue-heading"
-          className="rounded-xl border border-slate-800/90 bg-slate-900/75 p-5 lg:col-span-7"
+          className="rounded-2xl border border-[#E4E3DD] bg-white p-5 shadow-[0_1px_2px_rgba(17,19,24,0.03)] sm:p-6 lg:col-span-7"
         >
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h2
                 id="priority-queue-heading"
-                className="text-base font-semibold text-slate-100"
+                className="font-display text-lg font-bold tracking-tight text-[#111318]"
               >
                 Qué Pagar Primero Este Mes
               </h2>
-              <p className="text-xs text-slate-400">
-                Motor bancario al {formatShortDateAR(referenceDateISO)}: protege tu mínimo de comida y bloquea pagos antes del cierre.
+              <p className="mt-0.5 text-xs text-[#525866]">
+                Análisis bancario al {formatShortDateAR(referenceDateISO)}: prioriza urgencias dentro de tu quincena sin tocar la comida y bloquea tarjetas pre-cierre.
               </p>
             </div>
             <button
               type="button"
               onClick={() => onNavigateTab('checklist')}
-              className="text-xs font-medium text-emerald-400 hover:text-emerald-300 whitespace-nowrap shrink-0"
+              className="text-xs font-semibold text-[#1D4ED8] transition-colors hover:underline whitespace-nowrap shrink-0"
             >
               Ver lista completa
             </button>
           </div>
 
-          {/* Tope seguro de pagos por quincena resguardando comida */}
-          <div className="mt-4 grid grid-cols-1 gap-2.5 rounded-lg border border-slate-800/80 bg-slate-950/60 p-3 text-xs sm:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-4 border-y border-[#EEEDE8] py-3 text-xs sm:grid-cols-2">
             <div>
-              <span className="text-slate-400">Tope pagable 1°Q (sin comida):</span>{' '}
-              <span className="font-mono-tabular font-semibold text-emerald-400">
+              <span className="text-[#525866]">Tope pagable 1°Q (sin comida):</span>{' '}
+              <span className="font-mono-tabular font-bold text-[#1D4ED8]">
                 {MoneyUtils.formatARSCents(q1.presupuestoPagableSinComidaCents)}
               </span>
-              <span className="block text-[11px] text-slate-500 font-mono-tabular">
-                Recomendado hoy: {MoneyUtils.formatARSCents(q1.totalRecomendadoAhoraCents)}
+              <span className="mt-0.5 block font-mono-tabular text-[11px] text-[#747A88]">
+                Recomendado hoy:{' '}
+                {MoneyUtils.formatARSCents(q1.totalRecomendadoAhoraCents)}
               </span>
             </div>
             <div>
-              <span className="text-slate-400">Tope pagable 2°Q (sin comida):</span>{' '}
-              <span className="font-mono-tabular font-semibold text-emerald-400">
+              <span className="text-[#525866]">Tope pagable 2°Q (sin comida):</span>{' '}
+              <span className="font-mono-tabular font-bold text-[#1D4ED8]">
                 {MoneyUtils.formatARSCents(q2.presupuestoPagableSinComidaCents)}
               </span>
-              <span className="block text-[11px] text-slate-500 font-mono-tabular">
-                Recomendado hoy: {MoneyUtils.formatARSCents(q2.totalRecomendadoAhoraCents)}
+              <span className="mt-0.5 block font-mono-tabular text-[11px] text-[#747A88]">
+                Recomendado hoy:{' '}
+                {MoneyUtils.formatARSCents(q2.totalRecomendadoAhoraCents)}
                 {pagosPostergadosPorComida.length > 0
                   ? ` · ${pagosPostergadosPorComida.length} excede(n) tope`
                   : ''}
@@ -468,159 +631,192 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
           </div>
 
           {colaPrioridad.length === 0 ? (
-            <div className="mt-6 flex flex-col items-center justify-center rounded-lg border border-slate-800/80 py-10 text-center">
+            <div className="flex flex-col items-center justify-center py-12 text-center">
               <CheckCircle2
-                className="h-8 w-8 text-emerald-400"
+                className="h-8 w-8 text-[#1D4ED8]"
                 aria-hidden="true"
               />
-              <p className="mt-2 text-sm font-medium text-slate-200">
+              <p className="mt-3 font-display text-base font-bold text-[#111318]">
                 Todas las cuentas de este mes están pagadas
               </p>
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-[#525866]">
                 Podés pasar al mes siguiente desde la barra superior.
               </p>
             </div>
           ) : (
-            <div className="mt-4 divide-y divide-slate-800/80">
-              {colaPrioridad.slice(0, 8).map((alloc) => {
-                const badge = getPriorityLabel(alloc.prioridad);
-                const bankBadge = getBankingBadge(alloc.bankingStatus);
-                const ob = alloc.obligacion;
-                return (
-                  <div
-                    key={ob.id}
-                    className="flex flex-col gap-3 py-3.5 sm:flex-row sm:items-start sm:justify-between"
-                  >
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                        <span
-                          className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${bankBadge.className}`}
-                        >
-                          {bankBadge.text}
-                        </span>
-                        <span className={`font-semibold ${badge.className}`}>
-                          {badge.text}
-                        </span>
-                        <span aria-hidden="true" className="text-slate-600">
-                          ·
-                        </span>
-                        <InlineDateEditor
-                          itemTitle={ob.titulo}
-                          label="Vence"
-                          dateISO={ob.fechaExactaVencimiento}
-                          readOnly={!canEditFinances}
-                          onSaveDate={(val) =>
-                            onQuickUpdateDates(ob, {
-                              fechaExactaVencimiento: val,
-                            })
-                          }
-                        />
-                        {alloc.fechaLimiteRecomendadaISO !== ob.fechaExactaVencimiento && (
-                          <span className="text-[11px] font-semibold text-amber-300 font-mono-tabular">
-                            · Límite hábil {formatShortDateAR(alloc.fechaLimiteRecomendadaISO)}
+            <>
+              <div className="mt-2 divide-y divide-[#EEEDE8]">
+                {visibleQueue.map((alloc) => {
+                  const priorityMeta = getPriorityText(alloc.prioridad);
+                  const bankMeta = getBankingIndicator(alloc.bankingStatus);
+                  const ob = alloc.obligacion;
+                  return (
+                    <div
+                      key={ob.id}
+                      className="flex flex-col gap-3 py-4 transition-colors hover:bg-[#FAF9F6] sm:flex-row sm:items-start sm:justify-between"
+                    >
+                      <div className="min-w-0 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                          <span
+                            className={`inline-flex items-center gap-1.5 font-semibold ${bankMeta.textClass}`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${bankMeta.dotClass}`}
+                              aria-hidden="true"
+                            />
+                            {bankMeta.text}
                           </span>
-                        )}
-                        <span aria-hidden="true" className="text-slate-600">
-                          ·
-                        </span>
-                        <span className="text-slate-400">
-                          {ob.bolsilloResponsable}
-                        </span>
-                        {ob.editadoManualmente && (
-                          <span className="text-cyan-400">· Ajustado</span>
+                          <span aria-hidden="true" className="text-[#D4D2CA]">
+                            ·
+                          </span>
+                          <span className={`font-semibold ${priorityMeta.className}`}>
+                            {priorityMeta.text}
+                          </span>
+                          <span aria-hidden="true" className="text-[#D4D2CA]">
+                            ·
+                          </span>
+                          <InlineDateEditor
+                            itemTitle={ob.titulo}
+                            label="Vence"
+                            dateISO={ob.fechaExactaVencimiento}
+                            readOnly={!canEditFinances}
+                            onSaveDate={(val) =>
+                              onQuickUpdateDates(ob, {
+                                fechaExactaVencimiento: val,
+                              })
+                            }
+                          />
+                          {alloc.fechaLimiteRecomendadaISO !==
+                            ob.fechaExactaVencimiento && (
+                            <span className="font-mono-tabular text-[11px] font-semibold text-[#B45309]">
+                              · Límite hábil{' '}
+                              {formatShortDateAR(alloc.fechaLimiteRecomendadaISO)}
+                            </span>
+                          )}
+                          <span aria-hidden="true" className="text-[#D4D2CA]">
+                            ·
+                          </span>
+                          <span className="text-[#525866]">
+                            {ob.bolsilloResponsable}
+                          </span>
+                        </div>
+
+                        <p className="truncate font-display text-[15px] font-bold text-[#111318]">
+                          {ob.titulo}
+                          {ob.esCuotaFija &&
+                          ob.cuotaActual &&
+                          ob.cuotasTotales
+                            ? ` (${ob.cuotaActual}/${ob.cuotasTotales})`
+                            : ''}
+                        </p>
+
+                        <p className="text-xs text-[#525866]">
+                          {alloc.razonPrioridad}
+                        </p>
+
+                        {alloc.avisoBancario && (
+                          <p className="rounded-lg bg-[#F6F6F3] px-3 py-2 text-[11px] leading-relaxed text-[#525866]">
+                            {alloc.avisoBancario}
+                          </p>
                         )}
                       </div>
-                      <p className="truncate text-sm font-semibold text-slate-100">
-                        {ob.titulo}
-                        {ob.esCuotaFija && ob.cuotaActual && ob.cuotasTotales
-                          ? ` (${ob.cuotaActual}/${ob.cuotasTotales})`
-                          : ''}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        {alloc.razonPrioridad}
-                      </p>
-                      {alloc.avisoBancario && (
-                        <p className="rounded border border-slate-800 bg-slate-950/70 px-2.5 py-1.5 text-[11px] leading-relaxed text-slate-300">
-                          {alloc.avisoBancario}
-                        </p>
-                      )}
-                    </div>
 
-                    <div className="flex items-center justify-between gap-2 sm:justify-end shrink-0 pt-0.5">
-                      <InlineAmountEditor
-                        itemTitle={ob.titulo}
-                        amount={ob.montoPactado}
-                        readOnly={!canEditFinances}
-                        textClassName="text-sm font-bold text-slate-100"
-                        onSaveAmount={(val) => onQuickUpdateAmount(ob, val)}
-                      />
-                      <ReceiptsIconButton
-                        item={ob}
-                        onOpenReceipts={onOpenReceipts}
-                      />
-                      {canEditFinances && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => onEditItem(ob)}
-                            aria-label={`Editar todo de ${ob.titulo}`}
-                            title="Editar fechas, cuotas, bolsillo o notas"
-                            className="rounded-md border border-slate-800 bg-slate-950 p-1.5 text-slate-400 hover:border-slate-700 hover:text-slate-100"
-                          >
-                            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onMarkPaid(ob)}
-                            aria-label={`Marcar pagado ${ob.titulo}`}
-                            className="rounded-lg bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors whitespace-nowrap"
-                          >
-                            Marcar Pagado
-                          </button>
-                        </>
-                      )}
+                      <div className="flex items-center justify-between gap-2 pt-0.5 sm:justify-end shrink-0">
+                        <InlineAmountEditor
+                          itemTitle={ob.titulo}
+                          amount={ob.montoPactado}
+                          readOnly={!canEditFinances}
+                          textClassName="text-sm font-bold text-[#111318]"
+                          onSaveAmount={(val) => onQuickUpdateAmount(ob, val)}
+                        />
+                        <ReceiptsIconButton
+                          item={ob}
+                          onOpenReceipts={onOpenReceipts}
+                        />
+                        {canEditFinances && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => onEditItem(ob)}
+                              aria-label={`Editar todo de ${ob.titulo}`}
+                              title="Editar fechas, cuotas, bolsillo o notas"
+                              className="rounded-lg border border-[#E4E3DD] bg-[#F6F6F3] p-1.5 text-[#525866] transition-colors hover:bg-[#EEEDE8] hover:text-[#111318]"
+                            >
+                              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onMarkPaid(ob)}
+                              aria-label={`Marcar pagado ${ob.titulo}`}
+                              className="rounded-lg bg-[#1D4ED8] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#1E40AF] whitespace-nowrap"
+                            >
+                              Marcar Pagado
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+
+              {colaPrioridad.length > 8 && (
+                <div className="mt-3 border-t border-[#EEEDE8] pt-3 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setShowAllQueue((v) => !v)}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#525866] transition-colors hover:text-[#111318]"
+                  >
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 transition-transform ${
+                        showAllQueue ? 'rotate-180' : ''
+                      }`}
+                      aria-hidden="true"
+                    />
+                    {showAllQueue
+                      ? 'Mostrar solo las primeras 8'
+                      : `Ver las ${colaPrioridad.length - 8} restantes`}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </section>
 
-        {/* Columna derecha: Tarjetas bloqueadas + Tarjetas de Crédito + Radar Quita (5 cols) */}
+        {/* Columna derecha: Anti-doble-pago + Tarjetas + Radar Quita (5 cols) */}
         <div className="space-y-6 lg:col-span-5">
           {tarjetasBloqueadasPorCierre.length > 0 && (
             <section
               aria-labelledby="bloqueadas-cierre-heading"
-              className="rounded-xl border border-cyan-500/35 bg-cyan-950/15 p-4"
+              className="rounded-2xl border border-[#FDE68A] bg-[#FFFBEB] p-5"
             >
               <h2
                 id="bloqueadas-cierre-heading"
-                className="flex items-center gap-2 text-sm font-semibold text-cyan-300"
+                className="flex items-center gap-2 font-display text-sm font-bold text-[#92400E]"
               >
-                <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <Clock className="h-4 w-4 shrink-0 text-[#D97706]" aria-hidden="true" />
                 No Pagar Antes del Cierre (Anti-Doble-Pago)
               </h2>
-              <p className="mt-1 text-xs text-slate-300 leading-relaxed">
-                Abonar antes del cierre solo amortiza deuda y no cancela el Pago Mínimo del resumen que cierra. Esperá la ventana válida:
+              <p className="mt-1.5 text-xs leading-relaxed text-[#78350F]">
+                Abonar antes del cierre solo amortiza deuda y no cancela el Pago Mínimo del resumen. Esperá tu ventana válida:
               </p>
-              <div className="mt-3 space-y-2">
+              <div className="mt-3 divide-y divide-[#FDE68A] border-t border-[#FDE68A]">
                 {tarjetasBloqueadasPorCierre.map((b) => (
                   <div
                     key={b.obligacion.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-cyan-500/25 bg-slate-950/70 px-3 py-2 text-xs"
+                    className="flex items-center justify-between gap-2 py-2.5 text-xs"
                   >
                     <div className="min-w-0">
-                      <p className="truncate font-semibold text-slate-100">
+                      <p className="truncate font-bold text-[#111318]">
                         {b.obligacion.titulo}
                       </p>
-                      <p className="text-[11px] text-cyan-300 font-mono-tabular">
-                        Cierre {formatShortDateAR(b.obligacion.fechaCierre!)} · Pagar del{' '}
-                        {formatShortDateAR(b.ventanaPagoDesdeISO!)} al{' '}
+                      <p className="font-mono-tabular text-[11px] font-medium text-[#92400E]">
+                        Cierre {formatShortDateAR(b.obligacion.fechaCierre!)} ·
+                        Pagar del {formatShortDateAR(b.ventanaPagoDesdeISO!)} al{' '}
                         {formatShortDateAR(b.fechaLimiteRecomendadaISO)}
                       </p>
                     </div>
-                    <span className="font-mono-tabular font-semibold text-slate-200 shrink-0">
+                    <span className="font-mono-tabular font-bold text-[#111318] shrink-0">
                       {MoneyUtils.formatARS(b.obligacion.montoPactado)}
                     </span>
                   </div>
@@ -629,248 +825,281 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
             </section>
           )}
 
-          {/* Tarjetas con Cierre, Vencimiento, Pago Mínimo y Deuda Total editables */}
+          {/* Tarjetas de Crédito */}
           <section
             aria-labelledby="tarjetas-resumen-heading"
-            className="rounded-xl border border-slate-800/90 bg-slate-900/75 p-5"
+            className="rounded-2xl border border-[#E4E3DD] bg-white p-5 shadow-[0_1px_2px_rgba(17,19,24,0.03)] sm:p-6"
           >
             <div className="flex items-center justify-between gap-2">
               <div>
                 <h2
                   id="tarjetas-resumen-heading"
-                  className="flex items-center gap-2 text-base font-semibold text-slate-100"
+                  className="flex items-center gap-2 font-display text-base font-bold text-[#111318]"
                 >
-                  <CreditCard className="h-4 w-4 text-rose-400" aria-hidden="true" />
+                  <CreditCard
+                    className="h-4 w-4 text-[#DC2626]"
+                    aria-hidden="true"
+                  />
                   Tarjetas de Crédito
                 </h2>
-                <p className="text-xs text-slate-400">
+                <p className="mt-0.5 text-xs text-[#525866]">
                   {canEditFinances
-                    ? 'Editá Cierre, Vence, Pago Mínimo, Deuda total o subí el resumen PDF.'
+                    ? 'Editá cierre, vencimiento, mínimo, deuda total o subí el PDF.'
                     : 'Consultá cierres, vencimientos y subí los resúmenes PDF en Drive.'}
                 </p>
               </div>
-              <span className="text-sm font-bold text-rose-400 font-mono-tabular shrink-0">
+              <span className="font-mono-tabular text-sm font-bold text-[#DC2626] shrink-0">
                 {MoneyUtils.formatARSCents(summary.tarjetasTotalesCents)}
               </span>
             </div>
 
-            <div className="mt-4 divide-y divide-slate-800/80">
-              {/* Tarjeta Carrefour Agrupada */}
+            <div className="mt-4 divide-y divide-[#EEEDE8]">
               {carrefourItems.length > 0 && (
-                <div className="py-3">
+                <div className="py-3.5">
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <p className="text-sm font-semibold text-slate-100">
+                      <p className="text-sm font-bold text-[#111318]">
                         Tarjeta Carrefour
                       </p>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-[#525866]">
                         Suma de cuotas activas del resumen
                       </p>
                     </div>
-                    <span className="text-sm font-bold text-slate-100 font-mono-tabular">
+                    <span className="font-mono-tabular text-sm font-bold text-[#111318]">
                       {MoneyUtils.formatARSCents(carrefourTotalCents)}
                     </span>
                   </div>
-                  <div className="mt-2.5 space-y-2.5 border-t border-slate-800/70 pt-2.5 pl-2">
-                    {carrefourItems.map((sub) => (
-                      <div key={sub.id} className="space-y-1 text-xs">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="truncate font-medium text-slate-200">
-                              {sub.titulo}{' '}
-                              <span className="text-cyan-400 font-mono-tabular">
-                                {sub.cuotaActual}/{sub.cuotasTotales}
+
+                  <div className="mt-3 space-y-3 border-t border-[#EEEDE8] pt-3 pl-2.5">
+                    {carrefourItems.map((sub) => {
+                      const cycleCheck = validateCardCycleDates(
+                        sub.fechaCierre,
+                        sub.fechaExactaVencimiento
+                      );
+                      return (
+                        <div key={sub.id} className="space-y-1 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="truncate font-semibold text-[#111318]">
+                                {sub.titulo}{' '}
+                                <span className="font-mono-tabular text-[#4338CA]">
+                                  {sub.cuotaActual}/{sub.cuotasTotales}
+                                </span>
                               </span>
-                            </span>
-                            {sub.editadoManualmente && (
-                              <span className="text-[11px] text-cyan-400 shrink-0">
-                                · Ajustado
-                              </span>
-                            )}
-                            <ReceiptsIconButton
-                              item={sub}
-                              onOpenReceipts={onOpenReceipts}
-                              compact
+                              <ReceiptsIconButton
+                                item={sub}
+                                onOpenReceipts={onOpenReceipts}
+                                compact
+                              />
+                              {canEditFinances && (
+                                <button
+                                  type="button"
+                                  onClick={() => onEditItem(sub)}
+                                  aria-label={`Editar todo de ${sub.titulo}`}
+                                  title="Editar detalle completo"
+                                  className="rounded p-0.5 text-[#747A88] hover:text-[#1D4ED8]"
+                                >
+                                  <Pencil className="h-3 w-3" aria-hidden="true" />
+                                </button>
+                              )}
+                            </div>
+                            <InlineAmountEditor
+                              itemTitle={sub.titulo}
+                              amount={sub.montoPactado}
+                              readOnly={!canEditFinances}
+                              textClassName="text-xs font-bold text-[#111318]"
+                              onSaveAmount={(val) => onQuickUpdateAmount(sub, val)}
                             />
-                            {canEditFinances && (
-                              <button
-                                type="button"
-                                onClick={() => onEditItem(sub)}
-                                aria-label={`Editar todo de ${sub.titulo}`}
-                                title="Editar detalle completo"
-                                className="rounded p-0.5 text-slate-500 hover:text-emerald-400"
-                              >
-                                <Pencil className="h-3 w-3" aria-hidden="true" />
-                              </button>
-                            )}
                           </div>
-                          <InlineAmountEditor
-                            itemTitle={sub.titulo}
-                            amount={sub.montoPactado}
-                            readOnly={!canEditFinances}
-                            textClassName="text-xs font-medium text-slate-200"
-                            onSaveAmount={(val) => onQuickUpdateAmount(sub, val)}
-                          />
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#525866]">
+                            <InlineDateEditor
+                              itemTitle={sub.titulo}
+                              label="Cierre"
+                              dateISO={sub.fechaCierre}
+                              placeholder="+ Cierre"
+                              readOnly={!canEditFinances}
+                              onSaveDate={(val) =>
+                                onQuickUpdateDates(sub, { fechaCierre: val })
+                              }
+                            />
+                            <InlineDateEditor
+                              itemTitle={sub.titulo}
+                              label="Vence"
+                              dateISO={sub.fechaExactaVencimiento}
+                              readOnly={!canEditFinances}
+                              onSaveDate={(val) =>
+                                onQuickUpdateDates(sub, {
+                                  fechaExactaVencimiento: val,
+                                })
+                              }
+                            />
+                          </div>
+                          {!cycleCheck.valid && (
+                            <p className="text-[11px] font-medium text-[#B45309]">
+                              {cycleCheck.warning}
+                            </p>
+                          )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                          <InlineDateEditor
-                            itemTitle={sub.titulo}
-                            label="Cierre"
-                            dateISO={sub.fechaCierre}
-                            placeholder="+ Cierre"
-                            readOnly={!canEditFinances}
-                            onSaveDate={(val) =>
-                              onQuickUpdateDates(sub, { fechaCierre: val })
-                            }
-                          />
-                          <InlineDateEditor
-                            itemTitle={sub.titulo}
-                            label="Vence"
-                            dateISO={sub.fechaExactaVencimiento}
-                            readOnly={!canEditFinances}
-                            onSaveDate={(val) =>
-                              onQuickUpdateDates(sub, {
-                                fechaExactaVencimiento: val,
-                              })
-                            }
-                          />
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
-              {/* Tarjetas Rotativas */}
-              {rotatingCards.map((card) => (
-                <div key={card.id} className="py-3 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="truncate text-sm font-semibold text-slate-100">
-                        {card.titulo}
-                      </span>
-                      {card.editadoManualmente && (
-                        <span className="text-[11px] text-cyan-400 shrink-0">
-                          · Ajustado
+              {rotatingCards.map((card) => {
+                const cycleCheck = validateCardCycleDates(
+                  card.fechaCierre,
+                  card.fechaExactaVencimiento
+                );
+                const monthlyInterestCents = estimateMonthlyCardInterestCents(
+                  card.saldoCapitalTotal,
+                  card.tnaEstimada
+                );
+                return (
+                  <div key={card.id} className="py-3.5 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="truncate text-sm font-bold text-[#111318]">
+                          {card.titulo}
                         </span>
-                      )}
-                      <ReceiptsIconButton
-                        item={card}
-                        onOpenReceipts={onOpenReceipts}
-                        compact
-                      />
-                      {canEditFinances && (
-                        <button
-                          type="button"
-                          onClick={() => onEditItem(card)}
-                          aria-label={`Editar todo de ${card.titulo}`}
-                          title="Editar saldo total, fechas y notas"
-                          className="rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-emerald-400 shrink-0"
-                        >
-                          <Pencil className="h-3 w-3" aria-hidden="true" />
-                        </button>
-                      )}
-                    </div>
-                    <InlineAmountEditor
-                      itemTitle={card.titulo}
-                      amount={card.montoPactado}
-                      readOnly={!canEditFinances}
-                      textClassName="text-sm font-bold text-rose-400"
-                      onSaveAmount={(val) => onQuickUpdateAmount(card, val)}
-                    />
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <InlineDateEditor
-                      itemTitle={card.titulo}
-                      label="Cierre"
-                      dateISO={card.fechaCierre}
-                      placeholder="+ Cierre"
-                      readOnly={!canEditFinances}
-                      onSaveDate={(val) =>
-                        onQuickUpdateDates(card, { fechaCierre: val })
-                      }
-                    />
-                    <InlineDateEditor
-                      itemTitle={card.titulo}
-                      label="Vence"
-                      dateISO={card.fechaExactaVencimiento}
-                      readOnly={!canEditFinances}
-                      onSaveDate={(val) =>
-                        onQuickUpdateDates(card, {
-                          fechaExactaVencimiento: val,
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400 font-mono-tabular">
-                    <div className="flex items-center gap-1">
-                      <span className="font-sans">Deuda total:</span>
+                        <ReceiptsIconButton
+                          item={card}
+                          onOpenReceipts={onOpenReceipts}
+                          compact
+                        />
+                        {canEditFinances && (
+                          <button
+                            type="button"
+                            onClick={() => onEditItem(card)}
+                            aria-label={`Editar todo de ${card.titulo}`}
+                            title="Editar saldo total, fechas y notas"
+                            className="rounded p-1 text-[#747A88] hover:bg-[#F6F6F3] hover:text-[#1D4ED8] shrink-0"
+                          >
+                            <Pencil className="h-3 w-3" aria-hidden="true" />
+                          </button>
+                        )}
+                      </div>
                       <InlineAmountEditor
-                        itemTitle={`deuda total de ${card.titulo}`}
-                        amount={card.saldoCapitalTotal ?? 0}
+                        itemTitle={card.titulo}
+                        amount={card.montoPactado}
                         readOnly={!canEditFinances}
-                        textClassName="text-xs font-semibold text-slate-200"
-                        onSaveAmount={(val) => onQuickUpdateCapital(card, val)}
+                        textClassName="text-sm font-bold text-[#DC2626]"
+                        onSaveAmount={(val) => onQuickUpdateAmount(card, val)}
                       />
                     </div>
-                    <span
-                      className={
-                        card.estado === 'PAGADO'
-                          ? 'text-emerald-400 font-semibold'
-                          : 'text-amber-400 font-semibold'
-                      }
-                    >
-                      {card.estado}
-                    </span>
+
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <InlineDateEditor
+                        itemTitle={card.titulo}
+                        label="Cierre"
+                        dateISO={card.fechaCierre}
+                        placeholder="+ Cierre"
+                        readOnly={!canEditFinances}
+                        onSaveDate={(val) =>
+                          onQuickUpdateDates(card, { fechaCierre: val })
+                        }
+                      />
+                      <InlineDateEditor
+                        itemTitle={card.titulo}
+                        label="Vence"
+                        dateISO={card.fechaExactaVencimiento}
+                        readOnly={!canEditFinances}
+                        onSaveDate={(val) =>
+                          onQuickUpdateDates(card, {
+                            fechaExactaVencimiento: val,
+                          })
+                        }
+                      />
+                    </div>
+
+                    {!cycleCheck.valid && (
+                      <p className="text-[11px] font-medium text-[#B45309]">
+                        {cycleCheck.warning}
+                      </p>
+                    )}
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 font-mono-tabular text-xs text-[#525866]">
+                      <div className="flex items-center gap-1">
+                        <span className="font-sans">Deuda total:</span>
+                        <InlineAmountEditor
+                          itemTitle={`deuda total de ${card.titulo}`}
+                          amount={card.saldoCapitalTotal ?? 0}
+                          readOnly={!canEditFinances}
+                          textClassName="text-xs font-bold text-[#111318]"
+                          onSaveAmount={(val) => onQuickUpdateCapital(card, val)}
+                        />
+                      </div>
+                      <span
+                        className={
+                          card.estado === 'PAGADO'
+                            ? 'font-bold text-[#1D4ED8]'
+                            : 'font-bold text-[#B45309]'
+                        }
+                      >
+                        {card.estado}
+                      </span>
+                    </div>
+
+                    {monthlyInterestCents > 0 && (
+                      <p className="text-[11px] text-[#747A88] font-mono-tabular">
+                        Costo financiero aprox. TNA {card.tnaEstimada}%:{' '}
+                        <span className="font-semibold text-[#111318]">
+                          ~{MoneyUtils.formatARSCents(monthlyInterestCents)}/mes
+                        </span>
+                      </p>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
 
-          {/* Radar de Oportunidad & Simulador de Excedente */}
+          {/* Radar Quita Mercado Pago */}
           <section
             aria-labelledby="radar-oportunidad-heading"
-            className="rounded-xl border border-slate-800/90 bg-slate-900/75 p-5"
+            className="rounded-2xl border border-[#E4E3DD] bg-white p-5 shadow-[0_1px_2px_rgba(17,19,24,0.03)] sm:p-6"
           >
             <div className="flex items-center justify-between gap-2">
               <h2
                 id="radar-oportunidad-heading"
-                className="flex items-center gap-2 text-base font-semibold text-slate-100"
+                className="flex items-center gap-2 font-display text-base font-bold text-[#111318]"
               >
-                <Sparkles className="h-4 w-4 text-cyan-400" aria-hidden="true" />
+                <Sparkles
+                  className="h-4 w-4 text-[#4338CA]"
+                  aria-hidden="true"
+                />
                 Oferta Quita Mercado Pago
               </h2>
               <button
                 type="button"
                 onClick={() => onNavigateTab('extincion')}
-                className="text-xs font-medium text-cyan-400 hover:text-cyan-300"
+                className="text-xs font-semibold text-[#1D4ED8] hover:underline"
               >
-                Ver cuotas
+                Simular plan
               </button>
             </div>
 
             {radarQuita && (
-              <div className="mt-3 space-y-3">
+              <div className="mt-4 space-y-3">
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-[#525866]">
                     Deuda original sin descuento
                   </span>
-                  <span className="text-xs text-slate-400 line-through font-mono-tabular">
+                  <span className="font-mono-tabular text-xs text-[#747A88] line-through">
                     {MoneyUtils.formatARS(radarQuita.saldoCapitalTotal ?? 0)}
                   </span>
                 </div>
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-sm font-medium text-slate-200">
+                  <span className="text-sm font-semibold text-[#111318]">
                     Pago contado ({radarQuita.porcentajeQuita ?? 78.9}% OFF)
                   </span>
-                  <span className="text-lg font-bold text-cyan-400 font-mono-tabular">
+                  <span className="font-mono-tabular text-lg font-bold text-[#4338CA]">
                     {MoneyUtils.formatARS(
                       radarQuita.montoOfertaQuitaContado ?? 0
                     )}
                   </span>
                 </div>
-                <p className="rounded-lg border border-slate-800 bg-slate-950/70 p-3 text-xs leading-relaxed text-slate-300">
+                <p className="border-t border-[#EEEDE8] pt-3 text-xs leading-relaxed text-[#525866]">
                   {simuladorExcedente.recomendacionTexto}
                 </p>
               </div>
@@ -879,38 +1108,38 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
         </div>
       </div>
 
-      {/* Desglose Inferior Editable: Ingresos, Servicios del Hogar y Cuotas Fijas */}
+      {/* Desglose Inferior Editable: Ingresos, Servicios y Cuotas Fijas */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Ingresos Editables del Mes */}
+        {/* Ingresos */}
         <section
           aria-labelledby="ingresos-mes-heading"
-          className="rounded-xl border border-slate-800/90 bg-slate-900/75 p-5"
+          className="rounded-2xl border border-[#E4E3DD] bg-white p-5 shadow-[0_1px_2px_rgba(17,19,24,0.03)] sm:p-6"
         >
           <div className="flex items-center justify-between gap-2">
             <div>
               <h2
                 id="ingresos-mes-heading"
-                className="text-base font-semibold text-slate-100"
+                className="font-display text-base font-bold text-[#111318]"
               >
                 Ingresos del Mes
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-[#525866]">
                 Tocá fecha o monto para actualizar cobros.
               </p>
             </div>
-            <span className="text-base font-bold text-emerald-400 font-mono-tabular shrink-0">
+            <span className="font-mono-tabular text-base font-bold text-[#1D4ED8] shrink-0">
               {MoneyUtils.formatARSCents(summary.ingresosTotalesCents)}
             </span>
           </div>
-          <div className="mt-4 divide-y divide-slate-800/80">
+          <div className="mt-4 divide-y divide-[#EEEDE8]">
             {incomesList.map((inc) => (
               <div
                 key={inc.id}
-                className="flex items-center justify-between gap-2 py-2.5 text-sm"
+                className="flex items-center justify-between gap-2 py-3 text-sm"
               >
                 <div className="min-w-0 space-y-0.5">
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate font-medium text-slate-200">
+                    <span className="truncate font-semibold text-[#111318]">
                       {inc.titulo}
                     </span>
                     <ReceiptsIconButton
@@ -924,13 +1153,13 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
                         onClick={() => onEditItem(inc)}
                         aria-label={`Editar todo de ${inc.titulo}`}
                         title="Editar detalle"
-                        className="rounded p-0.5 text-slate-500 hover:text-emerald-400 shrink-0"
+                        className="rounded p-0.5 text-[#747A88] hover:text-[#1D4ED8] shrink-0"
                       >
                         <Pencil className="h-3 w-3" aria-hidden="true" />
                       </button>
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-[#525866]">
                     <InlineDateEditor
                       itemTitle={inc.titulo}
                       label="Cobro"
@@ -941,9 +1170,6 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
                       }
                     />
                     <span>· {inc.bolsilloResponsable}</span>
-                    {inc.editadoManualmente && (
-                      <span className="text-cyan-400">· Ajustado</span>
-                    )}
                   </div>
                 </div>
                 <InlineAmountEditor
@@ -951,7 +1177,7 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
                   amount={inc.montoPactado}
                   prefix="+"
                   readOnly={!canEditFinances}
-                  textClassName="text-sm font-semibold text-emerald-400"
+                  textClassName="text-sm font-bold text-[#1D4ED8]"
                   onSaveAmount={(val) => onQuickUpdateAmount(inc, val)}
                 />
               </div>
@@ -959,38 +1185,38 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
           </div>
         </section>
 
-        {/* Servicios Básicos del Hogar */}
+        {/* Servicios */}
         <section
           aria-labelledby="servicios-heading"
-          className="rounded-xl border border-slate-800/90 bg-slate-900/75 p-5"
+          className="rounded-2xl border border-[#E4E3DD] bg-white p-5 shadow-[0_1px_2px_rgba(17,19,24,0.03)] sm:p-6"
         >
           <div className="flex items-center justify-between gap-2">
             <div>
               <h2
                 id="servicios-heading"
-                className="text-base font-semibold text-slate-100"
+                className="font-display text-base font-bold text-[#111318]"
               >
                 Servicios del Hogar
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-[#525866]">
                 {canEditFinances
                   ? 'Ajustá vencimiento, monto o subí la factura.'
                   : 'Consultá vencimientos y facturas en Drive.'}
               </p>
             </div>
-            <span className="text-base font-bold text-slate-100 font-mono-tabular shrink-0">
+            <span className="font-mono-tabular text-base font-bold text-[#111318] shrink-0">
               {MoneyUtils.formatARSCents(summary.serviciosHogarCents)}
             </span>
           </div>
-          <div className="mt-4 divide-y divide-slate-800/80">
+          <div className="mt-4 divide-y divide-[#EEEDE8]">
             {servicesList.map((srv) => (
               <div
                 key={srv.id}
-                className="flex items-center justify-between gap-2 py-2.5 text-sm"
+                className="flex items-center justify-between gap-2 py-3 text-sm"
               >
                 <div className="min-w-0 space-y-0.5">
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate font-medium text-slate-200">
+                    <span className="truncate font-semibold text-[#111318]">
                       {srv.titulo}
                     </span>
                     <ReceiptsIconButton
@@ -1004,13 +1230,13 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
                         onClick={() => onEditItem(srv)}
                         aria-label={`Editar todo de ${srv.titulo}`}
                         title="Editar detalle"
-                        className="rounded p-0.5 text-slate-500 hover:text-emerald-400 shrink-0"
+                        className="rounded p-0.5 text-[#747A88] hover:text-[#1D4ED8] shrink-0"
                       >
                         <Pencil className="h-3 w-3" aria-hidden="true" />
                       </button>
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-[#525866]">
                     <InlineDateEditor
                       itemTitle={srv.titulo}
                       label="Vence"
@@ -1023,22 +1249,19 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
                     <span
                       className={
                         srv.estado === 'PAGADO'
-                          ? 'text-emerald-400'
-                          : 'text-amber-400'
+                          ? 'font-semibold text-[#1D4ED8]'
+                          : 'font-semibold text-[#B45309]'
                       }
                     >
                       · {srv.estado}
                     </span>
-                    {srv.editadoManualmente && (
-                      <span className="text-cyan-400">· Ajustado</span>
-                    )}
                   </div>
                 </div>
                 <InlineAmountEditor
                   itemTitle={srv.titulo}
                   amount={srv.montoPactado}
                   readOnly={!canEditFinances}
-                  textClassName="text-sm font-semibold text-slate-100"
+                  textClassName="text-sm font-bold text-[#111318]"
                   onSaveAmount={(val) => onQuickUpdateAmount(srv, val)}
                 />
               </div>
@@ -1046,36 +1269,36 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
           </div>
         </section>
 
-        {/* Cuotas Fijas */}
+        {/* Cuotas Fijas Activas */}
         <section
           aria-labelledby="cuotas-fijas-heading"
-          className="rounded-xl border border-slate-800/90 bg-slate-900/75 p-5"
+          className="rounded-2xl border border-[#E4E3DD] bg-white p-5 shadow-[0_1px_2px_rgba(17,19,24,0.03)] sm:p-6"
         >
           <div className="flex items-center justify-between gap-2">
             <div>
               <h2
                 id="cuotas-fijas-heading"
-                className="text-base font-semibold text-slate-100"
+                className="font-display text-base font-bold text-[#111318]"
               >
                 Cuotas Fijas Activas
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-[#525866]">
                 Terminan automáticamente al pagar la última.
               </p>
             </div>
-            <span className="text-base font-bold text-slate-100 font-mono-tabular shrink-0">
+            <span className="font-mono-tabular text-base font-bold text-[#111318] shrink-0">
               {MoneyUtils.formatARSCents(summary.cuotasFijasCents)}
             </span>
           </div>
-          <div className="mt-4 divide-y divide-slate-800/80">
+          <div className="mt-4 divide-y divide-[#EEEDE8]">
             {fixedQuotasList.map((cf) => (
               <div
                 key={cf.id}
-                className="flex items-center justify-between gap-2 py-2.5 text-sm"
+                className="flex items-center justify-between gap-2 py-3 text-sm"
               >
                 <div className="min-w-0 space-y-0.5">
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate font-medium text-slate-200">
+                    <span className="truncate font-semibold text-[#111318]">
                       {cf.titulo}
                     </span>
                     <ReceiptsIconButton
@@ -1089,14 +1312,14 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
                         onClick={() => onEditItem(cf)}
                         aria-label={`Editar todo de ${cf.titulo}`}
                         title="Editar cuotas, fechas o bolsillo"
-                        className="rounded p-0.5 text-slate-500 hover:text-emerald-400 shrink-0"
+                        className="rounded p-0.5 text-[#747A88] hover:text-[#1D4ED8] shrink-0"
                       >
                         <Pencil className="h-3 w-3" aria-hidden="true" />
                       </button>
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400 font-mono-tabular">
-                    <span>
+                  <div className="flex flex-wrap items-center gap-1.5 font-mono-tabular text-xs text-[#525866]">
+                    <span className="font-semibold text-[#4338CA]">
                       {cf.cuotaActual}/{cf.cuotasTotales}
                     </span>
                     <span>·</span>
@@ -1109,16 +1332,13 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
                         onQuickUpdateDates(cf, { fechaExactaVencimiento: val })
                       }
                     />
-                    {cf.editadoManualmente && (
-                      <span className="font-sans text-cyan-400">· Ajustado</span>
-                    )}
                   </div>
                 </div>
                 <InlineAmountEditor
                   itemTitle={cf.titulo}
                   amount={cf.montoPactado}
                   readOnly={!canEditFinances}
-                  textClassName="text-sm font-semibold text-slate-100"
+                  textClassName="text-sm font-bold text-[#111318]"
                   onSaveAmount={(val) => onQuickUpdateAmount(cf, val)}
                 />
               </div>

@@ -1,86 +1,41 @@
-import { getApps, initializeApp } from 'firebase/app';
-import {
-  GoogleAuthProvider,
-  User,
-  getAuth,
-  onAuthStateChanged,
-  signInWithPopup,
-  signOut,
-} from 'firebase/auth';
-import firebaseAppletConfig from '../../firebase-applet-config.json';
+import { User } from 'firebase/auth';
 import { ComprobanteAdjunto, PeriodoID } from '../types/finance';
+import {
+  clearWorkspaceAccessToken,
+  getWorkspaceAccessToken,
+  getWorkspaceCurrentUser,
+  initWorkspaceAuth,
+  signInGoogleWorkspace,
+  signOutGoogleWorkspace,
+} from './googleWorkspaceAuth';
 
 export const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.file'];
-
-const DRIVE_APP_NAME = 'argencaja-drive-workspace';
 const ROOT_FOLDER_NAME = 'ArgenCaja Comprobantes';
-
-function getDriveAuth() {
-  const existing = getApps().find((a) => a.name === DRIVE_APP_NAME);
-  const app = existing ?? initializeApp(firebaseAppletConfig, DRIVE_APP_NAME);
-  return getAuth(app);
-}
-
-const driveAuth = getDriveAuth();
-const driveProvider = new GoogleAuthProvider();
-for (const scope of DRIVE_SCOPES) {
-  driveProvider.addScope(scope);
-}
-
-// Caché estrictamente en memoria (nunca en localStorage ni sessionStorage)
-let cachedAccessToken: string | null = null;
-let isSigningIn = false;
 
 export function initDriveAuth(
   onAuthSuccess?: (user: User, hasToken: boolean) => void,
   onSignedOut?: () => void
 ): () => void {
-  return onAuthStateChanged(driveAuth, (user) => {
-    if (user) {
-      if (cachedAccessToken) {
-        onAuthSuccess?.(user, true);
-      } else if (!isSigningIn) {
-        cachedAccessToken = null;
-        onAuthSuccess?.(user, false);
-      }
-    } else {
-      cachedAccessToken = null;
-      onSignedOut?.();
-    }
-  });
+  return initWorkspaceAuth(onAuthSuccess, onSignedOut);
 }
 
 export async function signInGoogleDrive(): Promise<{
   user: User;
   accessToken: string;
 }> {
-  try {
-    isSigningIn = true;
-    const result = await signInWithPopup(driveAuth, driveProvider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error(
-        'No se obtuvo el permiso de acceso a Google Drive. Intentá nuevamente.'
-      );
-    }
-    cachedAccessToken = credential.accessToken;
-    return { user: result.user, accessToken: cachedAccessToken };
-  } finally {
-    isSigningIn = false;
-  }
+  return signInGoogleWorkspace();
 }
 
 export async function signOutGoogleDrive(): Promise<void> {
-  await signOut(driveAuth);
-  cachedAccessToken = null;
+  return signOutGoogleWorkspace();
 }
 
 export function getDriveAccessToken(): string | null {
-  return cachedAccessToken;
+  return getWorkspaceAccessToken();
 }
 
 export function getDriveCurrentUser(): User | null {
-  return driveAuth.currentUser;
+  return getWorkspaceCurrentUser();
 }
 
 async function driveFetch(
@@ -96,9 +51,9 @@ async function driveFetch(
     },
   });
   if (res.status === 401) {
-    cachedAccessToken = null;
+    clearWorkspaceAccessToken();
     throw new Error(
-      'Tu sesión de Google Drive venció. Volvé a conectar tu cuenta.'
+      'Tu sesión de Google Workspace venció. Volvé a conectar tu cuenta.'
     );
   }
   if (!res.ok) {
@@ -157,7 +112,7 @@ export async function uploadReceiptToDrive(params: {
   itemTitle: string;
   tipo: 'RESUMEN' | 'COMPROBANTE';
 }): Promise<ComprobanteAdjunto> {
-  const token = cachedAccessToken;
+  const token = getWorkspaceAccessToken();
   if (!token) {
     throw new Error('Conectá tu cuenta de Google Drive antes de subir archivos.');
   }
@@ -230,7 +185,7 @@ export async function uploadReceiptToDrive(params: {
 }
 
 export async function deleteDriveFile(driveFileId: string): Promise<void> {
-  const token = cachedAccessToken;
+  const token = getWorkspaceAccessToken();
   if (!token) {
     throw new Error('Conectá tu cuenta de Google Drive para eliminar el archivo.');
   }
