@@ -389,8 +389,13 @@ service cloud.firestore {
         && isVerifiedUser()
         && (
           isPrimaryAdmin()
-          || request.auth.uid in existing().allowedUids
-          || request.auth.token.email.lower() in existing().allowedEmails
+          || (
+            resource != null
+            && (
+              request.auth.uid in existing().allowedUids
+              || request.auth.token.email.lower() in existing().allowedEmails
+            )
+          )
         );
       allow list: if false;
 

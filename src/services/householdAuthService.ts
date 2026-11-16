@@ -126,6 +126,61 @@ export function emailToInviteId(email: string): string {
   return `inv_${hex.slice(0, 118)}`;
 }
 
+export function formatFirebaseAuthError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error
+      ? String((error as { code: unknown }).code)
+      : '';
+
+  if (
+    code === 'auth/popup-closed-by-user' ||
+    raw.includes('popup-closed-by-user') ||
+    code === 'auth/cancelled-popup-request' ||
+    raw.includes('cancelled-popup-request')
+  ) {
+    return 'Cerraste la ventana de Google antes de completar el ingreso.';
+  }
+  if (code === 'auth/popup-blocked' || raw.includes('popup-blocked')) {
+    return 'El navegador bloqueó la ventana emergente de Google. Permití popups para este sitio e intentá de nuevo.';
+  }
+  if (
+    code === 'auth/unauthorized-domain' ||
+    raw.includes('unauthorized-domain')
+  ) {
+    return `Este dominio (${window.location.hostname}) todavía no está habilitado en Firebase Authentication → Authorized domains.`;
+  }
+  if (raw.includes('FIRESTORE_TIMEOUT') || raw.includes('deadline-exceeded')) {
+    return 'Firestore tardó demasiado en responder. Verificá tu conexión o recargá la página e intentá nuevamente.';
+  }
+  if (raw.includes('client is offline') || raw.includes('unavailable')) {
+    return 'Sin conexión con Firestore en este momento. Revisá tu internet e intentá nuevamente.';
+  }
+  if (raw.includes('permission-denied')) {
+    return 'Firestore rechazó la operación por permisos. Verificá que hayas ingresado con tu cuenta verificada.';
+  }
+  return 'No se pudo validar tu permiso de ingreso con Firestore. Verificá tu conexión e intentá nuevamente.';
+}
+
+async function withFirestoreTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs = 15000
+): Promise<T> {
+  let timer: number | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = window.setTimeout(() => {
+      reject(new Error('FIRESTORE_TIMEOUT'));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+    }
+  }
+}
+
 export function subscribeHouseholdAuth(
   callback: (user: User | null) => void
 ): () => void {
@@ -170,21 +225,34 @@ function buildFirestoreItemPayload(
   actorUid: string,
   includeCreatedAt: boolean
 ): Record<string, unknown> {
+  const safeId = item.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128) || 'item';
+  const safeMonto =
+    Number.isFinite(item.montoPactado) && item.montoPactado >= 0
+      ? Math.min(1000000000, item.montoPactado)
+      : 0;
+  const safeDia = Number.isFinite(item.diaVencimientoOCobro)
+    ? Math.min(31, Math.max(1, Math.round(item.diaVencimientoOCobro)))
+    : 1;
+  const safeVencimiento = /^\d{4}-\d{2}-\d{2}$/.test(item.fechaExactaVencimiento)
+    ? item.fechaExactaVencimiento
+    : `${item.periodo}-01`;
+  const safeBolsillo = item.bolsilloResponsable.trim().slice(0, 80) || 'Hogar';
+
   const payload: Record<string, unknown> = {
-    id: item.id,
+    id: safeId,
     householdId: household.id,
     ownerUid: household.ownerUid,
     allowedUids: household.allowedUids.slice(0, 10),
     allowedEmails: household.allowedEmails.slice(0, 10),
     periodo: item.periodo,
-    titulo: item.titulo.slice(0, 140),
+    titulo: item.titulo.trim().slice(0, 140) || 'Movimiento',
     categoria: item.categoria,
-    montoPactado: item.montoPactado,
+    montoPactado: safeMonto,
     estado: item.estado,
-    diaVencimientoOCobro: Math.min(31, Math.max(1, Math.round(item.diaVencimientoOCobro))),
-    fechaExactaVencimiento: item.fechaExactaVencimiento,
+    diaVencimientoOCobro: safeDia,
+    fechaExactaVencimiento: safeVencimiento,
     ventanaAsignada: item.ventanaAsignada,
-    bolsilloResponsable: item.bolsilloResponsable.slice(0, 80),
+    bolsilloResponsable: safeBolsillo,
     esCuotaFija: Boolean(item.esCuotaFija),
     updatedAt: serverTimestamp(),
     updatedByUid: actorUid,
@@ -194,33 +262,89 @@ function buildFirestoreItemPayload(
     payload.createdAt = serverTimestamp();
   }
   if (item.subgrupo !== undefined) payload.subgrupo = item.subgrupo.slice(0, 80);
-  if (item.montoPagado !== undefined) payload.montoPagado = item.montoPagado;
-  if (item.fechaCierre !== undefined) payload.fechaCierre = item.fechaCierre;
-  if (item.fechaPagoReal !== undefined) payload.fechaPagoReal = item.fechaPagoReal;
-  if (item.cuotaActual !== undefined) payload.cuotaActual = Math.round(item.cuotaActual);
-  if (item.cuotasTotales !== undefined) payload.cuotasTotales = Math.round(item.cuotasTotales);
+  if (
+    item.montoPagado !== undefined &&
+    Number.isFinite(item.montoPagado) &&
+    item.montoPagado >= 0
+  ) {
+    payload.montoPagado = Math.min(1000000000, item.montoPagado);
+  }
+  if (item.fechaCierre && /^\d{4}-\d{2}-\d{2}$/.test(item.fechaCierre)) {
+    payload.fechaCierre = item.fechaCierre;
+  }
+  if (item.fechaPagoReal && /^\d{4}-\d{2}-\d{2}$/.test(item.fechaPagoReal)) {
+    payload.fechaPagoReal = item.fechaPagoReal;
+  }
+  if (item.cuotaActual !== undefined && Number.isFinite(item.cuotaActual)) {
+    payload.cuotaActual = Math.min(240, Math.max(0, Math.round(item.cuotaActual)));
+  }
+  if (item.cuotasTotales !== undefined && Number.isFinite(item.cuotasTotales)) {
+    payload.cuotasTotales = Math.min(240, Math.max(1, Math.round(item.cuotasTotales)));
+  }
   if (item.mesFinEstimado !== undefined) payload.mesFinEstimado = item.mesFinEstimado.slice(0, 40);
-  if (item.montoLiberadoAlExtinguirse !== undefined) {
-    payload.montoLiberadoAlExtinguirse = item.montoLiberadoAlExtinguirse;
+  if (
+    item.montoLiberadoAlExtinguirse !== undefined &&
+    Number.isFinite(item.montoLiberadoAlExtinguirse) &&
+    item.montoLiberadoAlExtinguirse >= 0
+  ) {
+    payload.montoLiberadoAlExtinguirse = Math.min(1000000000, item.montoLiberadoAlExtinguirse);
   }
-  if (item.saldoCapitalTotal !== undefined) payload.saldoCapitalTotal = item.saldoCapitalTotal;
-  if (item.pagoMinimoExigido !== undefined) payload.pagoMinimoExigido = item.pagoMinimoExigido;
-  if (item.tnaEstimada !== undefined) payload.tnaEstimada = item.tnaEstimada;
-  if (item.montoOfertaQuitaContado !== undefined) {
-    payload.montoOfertaQuitaContado = item.montoOfertaQuitaContado;
+  if (
+    item.saldoCapitalTotal !== undefined &&
+    Number.isFinite(item.saldoCapitalTotal) &&
+    item.saldoCapitalTotal >= 0
+  ) {
+    payload.saldoCapitalTotal = Math.min(1000000000, item.saldoCapitalTotal);
   }
-  if (item.porcentajeQuita !== undefined) payload.porcentajeQuita = item.porcentajeQuita;
+  if (
+    item.pagoMinimoExigido !== undefined &&
+    Number.isFinite(item.pagoMinimoExigido) &&
+    item.pagoMinimoExigido >= 0
+  ) {
+    payload.pagoMinimoExigido = Math.min(1000000000, item.pagoMinimoExigido);
+  }
+  if (
+    item.tnaEstimada !== undefined &&
+    Number.isFinite(item.tnaEstimada) &&
+    item.tnaEstimada >= 0
+  ) {
+    payload.tnaEstimada = Math.min(5000, item.tnaEstimada);
+  }
+  if (
+    item.montoOfertaQuitaContado !== undefined &&
+    Number.isFinite(item.montoOfertaQuitaContado) &&
+    item.montoOfertaQuitaContado >= 0
+  ) {
+    payload.montoOfertaQuitaContado = Math.min(1000000000, item.montoOfertaQuitaContado);
+  }
+  if (
+    item.porcentajeQuita !== undefined &&
+    Number.isFinite(item.porcentajeQuita) &&
+    item.porcentajeQuita >= 0
+  ) {
+    payload.porcentajeQuita = Math.min(100, item.porcentajeQuita);
+  }
   if (item.notas !== undefined) payload.notas = item.notas.slice(0, 1000);
   if (item.adjuntos !== undefined) {
-    payload.adjuntos = item.adjuntos.slice(0, 20).map((a) => ({
-      id: a.id.slice(0, 128),
-      tipo: a.tipo,
-      nombre: a.nombre.slice(0, 200),
-      mimeType: a.mimeType.slice(0, 120),
-      driveFileId: a.driveFileId.slice(0, 200),
-      webViewLink: a.webViewLink.slice(0, 600),
-      subidoEn: a.subidoEn.slice(0, 40),
-    }));
+    payload.adjuntos = item.adjuntos
+      .filter(
+        (a) =>
+          a &&
+          typeof a.webViewLink === 'string' &&
+          a.webViewLink.length >= 8 &&
+          typeof a.subidoEn === 'string' &&
+          a.subidoEn.length >= 10
+      )
+      .slice(0, 20)
+      .map((a) => ({
+        id: a.id.slice(0, 128),
+        tipo: a.tipo,
+        nombre: a.nombre.slice(0, 200) || 'Adjunto',
+        mimeType: a.mimeType.slice(0, 120) || 'application/octet-stream',
+        driveFileId: a.driveFileId.slice(0, 200) || 'manual',
+        webViewLink: a.webViewLink.slice(0, 600),
+        subidoEn: a.subidoEn.slice(0, 40),
+      }));
   }
   if (item.editadoManualmente !== undefined) {
     payload.editadoManualmente = Boolean(item.editadoManualmente);
@@ -241,27 +365,33 @@ export async function resolveHouseholdAccess(
 
   const hhRef = doc(db, 'households', HOUSEHOLD_ID);
   const hhPath = `households/${HOUSEHOLD_ID}`;
+  const safeMinFoodARS =
+    Number.isFinite(fallbackMinFoodARS) && fallbackMinFoodARS >= 0
+      ? Math.min(100000000, fallbackMinFoodARS)
+      : 900000;
 
   // 1. Administrador Maestro (hz.mdiego@gmail.com)
   if (emailLower === PRIMARY_ADMIN_EMAIL) {
     let household: HouseholdDoc;
     try {
-      const hhSnap = await getDoc(hhRef);
+      const hhSnap = await withFirestoreTimeout(getDoc(hhRef));
       if (!hhSnap.exists()) {
         household = {
           id: HOUSEHOLD_ID,
           nombre: 'Hogar Principal · ArgenCaja',
           ownerUid: user.uid,
           ownerEmail: emailLower,
-          minFoodReserveARS: fallbackMinFoodARS,
+          minFoodReserveARS: safeMinFoodARS,
           allowedUids: [user.uid],
           allowedEmails: [emailLower],
         };
-        await setDoc(hhRef, {
-          ...household,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+        await withFirestoreTimeout(
+          setDoc(hhRef, {
+            ...household,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          })
+        );
       } else {
         const data = hhSnap.data() as HouseholdDoc;
         const nextUids = Array.from(new Set([...(data.allowedUids ?? []), user.uid])).slice(0, 10);
@@ -277,11 +407,13 @@ export async function resolveHouseholdAccess(
           nextUids.length !== (data.allowedUids?.length ?? 0) ||
           nextEmails.length !== (data.allowedEmails?.length ?? 0)
         ) {
-          await updateDoc(hhRef, {
-            allowedUids: nextUids,
-            allowedEmails: nextEmails,
-            updatedAt: serverTimestamp(),
-          });
+          await withFirestoreTimeout(
+            updateDoc(hhRef, {
+              allowedUids: nextUids,
+              allowedEmails: nextEmails,
+              updatedAt: serverTimestamp(),
+            })
+          );
         }
       }
     } catch (error) {
@@ -292,38 +424,38 @@ export async function resolveHouseholdAccess(
     const memberRef = doc(db, 'households', HOUSEHOLD_ID, 'members', user.uid);
     const memberPathStr = `households/${HOUSEHOLD_ID}/members/${user.uid}`;
     try {
-      const mSnap = await getDoc(memberRef);
+      const mSnap = await withFirestoreTimeout(getDoc(memberRef));
       if (!mSnap.exists()) {
-        await setDoc(memberRef, {
-          uid: user.uid,
-          householdId: HOUSEHOLD_ID,
-          adminUid: user.uid,
-          emailLower,
-          displayName: (user.displayName || 'Administrador').slice(0, 80),
-          role: 'ADMIN',
-          status: 'ACTIVO',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+        await withFirestoreTimeout(
+          setDoc(memberRef, {
+            uid: user.uid,
+            householdId: HOUSEHOLD_ID,
+            adminUid: user.uid,
+            emailLower,
+            displayName: (user.displayName || 'Administrador').slice(0, 80),
+            role: 'ADMIN',
+            status: 'ACTIVO',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          })
+        );
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, memberPathStr);
     }
 
-    // Si la nube todavía no tiene ítems, subir la semilla local inicial
+    // Si la nube todavía no tiene ítems, subir la semilla local inicial sin bloquear el ingreso
     try {
-      const itemsSnap = await getDocs(
-        collection(db, 'households', HOUSEHOLD_ID, 'items')
+      const itemsSnap = await withFirestoreTimeout(
+        getDocs(collection(db, 'households', HOUSEHOLD_ID, 'items'))
       );
       if (itemsSnap.empty && fallbackLocalItems.length > 0) {
-        await pushHouseholdItems(household, user.uid, fallbackLocalItems, true);
+        await withFirestoreTimeout(
+          pushHouseholdItems(household, user.uid, fallbackLocalItems, true)
+        );
       }
     } catch (error) {
-      handleFirestoreError(
-        error,
-        OperationType.LIST,
-        `households/${HOUSEHOLD_ID}/items`
-      );
+      console.warn('Aviso al inicializar ítems en Firestore:', error);
     }
 
     return { status: 'AUTHORIZED', role: 'ADMIN', household, user };
@@ -334,13 +466,13 @@ export async function resolveHouseholdAccess(
   const membersPath = `households/${HOUSEHOLD_ID}/members`;
   try {
     const mQuery = query(membersCol, where('uid', '==', user.uid));
-    const mSnap = await getDocs(mQuery);
+    const mSnap = await withFirestoreTimeout(getDocs(mQuery));
     if (!mSnap.empty) {
       const member = mSnap.docs[0].data() as HouseholdMember;
       if (member.status === 'REVOCADO') {
         return { status: 'REVOKED', email: emailLower, user };
       }
-      const hhSnap = await getDoc(hhRef);
+      const hhSnap = await withFirestoreTimeout(getDoc(hhRef));
       if (!hhSnap.exists()) {
         return {
           status: 'PENDING_APPROVAL',
@@ -365,7 +497,7 @@ export async function resolveHouseholdAccess(
   const invitesPath = `households/${HOUSEHOLD_ID}/invites`;
   try {
     const invQuery = query(invitesCol, where('emailLower', '==', emailLower));
-    const invSnap = await getDocs(invQuery);
+    const invSnap = await withFirestoreTimeout(getDocs(invQuery));
     const pendingInviteDoc = invSnap.docs.find(
       (d) => (d.data() as HouseholdInvite).status === 'PENDIENTE'
     );
@@ -395,9 +527,9 @@ export async function resolveHouseholdAccess(
         updatedAt: serverTimestamp(),
       });
 
-      await batch.commit();
+      await withFirestoreTimeout(batch.commit());
 
-      const hhSnap = await getDoc(hhRef);
+      const hhSnap = await withFirestoreTimeout(getDoc(hhRef));
       if (hhSnap.exists()) {
         return {
           status: 'AUTHORIZED',
@@ -416,7 +548,7 @@ export async function resolveHouseholdAccess(
   const reqPath = `households/${HOUSEHOLD_ID}/accessRequests/${user.uid}`;
   try {
     const reqQuery = query(reqCol, where('uid', '==', user.uid));
-    const reqSnap = await getDocs(reqQuery);
+    const reqSnap = await withFirestoreTimeout(getDocs(reqQuery));
     if (!reqSnap.empty) {
       const existingReq = reqSnap.docs[0].data() as AccessRequest;
       return {
@@ -428,15 +560,17 @@ export async function resolveHouseholdAccess(
       };
     }
 
-    await setDoc(doc(db, 'households', HOUSEHOLD_ID, 'accessRequests', user.uid), {
-      uid: user.uid,
-      householdId: HOUSEHOLD_ID,
-      emailLower,
-      displayName: (user.displayName || emailLower).slice(0, 80),
-      status: 'PENDIENTE',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    await withFirestoreTimeout(
+      setDoc(doc(db, 'households', HOUSEHOLD_ID, 'accessRequests', user.uid), {
+        uid: user.uid,
+        householdId: HOUSEHOLD_ID,
+        emailLower,
+        displayName: (user.displayName || emailLower).slice(0, 80),
+        status: 'PENDIENTE',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+    );
 
     return {
       status: 'PENDING_APPROVAL',

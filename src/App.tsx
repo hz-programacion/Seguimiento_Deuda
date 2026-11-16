@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import {
   AccessRequest,
@@ -37,6 +37,7 @@ import {
   AccessResolution,
   approveAccessRequest,
   deleteHouseholdItem,
+  formatFirebaseAuthError,
   inviteMemberByEmail,
   pushHouseholdItems,
   rejectAccessRequest,
@@ -172,13 +173,79 @@ export default function App() {
     );
   }, []);
 
+  const inFlightAuthResolveRef = useRef<{
+    uid: string;
+    promise: Promise<void>;
+  } | null>(null);
+  const lastResolvedAuthorizedUidRef = useRef<string | null>(null);
+
+  const runAccessResolutionForUser = useCallback(
+    async (user: NonNullable<Parameters<typeof resolveHouseholdAccess>[0]>) => {
+      if (inFlightAuthResolveRef.current?.uid === user.uid) {
+        return inFlightAuthResolveRef.current.promise;
+      }
+
+      const task = (async () => {
+        setAuthError(null);
+        setAuthChecking(true);
+        setCloudStatus('syncing');
+        try {
+          const res = await resolveHouseholdAccess(
+            user,
+            loadLocalItems(),
+            loadMinFoodReserveARS()
+          );
+          setAccessResolution(res);
+          if (res.status === 'AUTHORIZED') {
+            lastResolvedAuthorizedUidRef.current = user.uid;
+            setHouseholdDoc(res.household);
+            setMinFoodReserveARS(res.household.minFoodReserveARS);
+            setCloudStatus('connected');
+          } else {
+            lastResolvedAuthorizedUidRef.current = null;
+            setHouseholdDoc(null);
+            setCloudStatus('local');
+          }
+        } catch (err) {
+          console.error('Error resolviendo acceso del hogar:', err);
+          lastResolvedAuthorizedUidRef.current = null;
+          setAuthError(formatFirebaseAuthError(err));
+          setAccessResolution({ status: 'UNAUTHENTICATED' });
+          setCloudStatus('local');
+        } finally {
+          if (inFlightAuthResolveRef.current?.uid === user.uid) {
+            inFlightAuthResolveRef.current = null;
+          }
+          setAuthChecking(false);
+        }
+      })();
+
+      inFlightAuthResolveRef.current = { uid: user.uid, promise: task };
+      return task;
+    },
+    []
+  );
+
   // Suscripción a Firebase Auth + resolución estricta de membresía
   useEffect(() => {
     let cancelled = false;
+    let receivedFirstAuthEvent = false;
+
+    const initialSafetyTimer = window.setTimeout(() => {
+      if (!cancelled && !receivedFirstAuthEvent) {
+        setAuthChecking(false);
+        setAccessResolution((prev) => prev ?? { status: 'UNAUTHENTICATED' });
+      }
+    }, 8000);
+
     const unsubAuth = subscribeHouseholdAuth(async (user) => {
       if (cancelled) return;
+      receivedFirstAuthEvent = true;
+      window.clearTimeout(initialSafetyTimer);
       setAuthError(null);
       if (!user) {
+        inFlightAuthResolveRef.current = null;
+        lastResolvedAuthorizedUidRef.current = null;
         setAccessResolution({ status: 'UNAUTHENTICATED' });
         setHouseholdDoc(null);
         setMembers([]);
@@ -189,44 +256,15 @@ export default function App() {
         return;
       }
 
-      setAuthChecking(true);
-      setCloudStatus('syncing');
-      try {
-        const res = await resolveHouseholdAccess(
-          user,
-          loadLocalItems(),
-          loadMinFoodReserveARS()
-        );
-        if (cancelled) return;
-        setAccessResolution(res);
-        if (res.status === 'AUTHORIZED') {
-          setHouseholdDoc(res.household);
-          setMinFoodReserveARS(res.household.minFoodReserveARS);
-          setCloudStatus('connected');
-        } else {
-          setHouseholdDoc(null);
-          setCloudStatus('local');
-        }
-      } catch (err) {
-        if (cancelled) return;
-        console.error('Error resolviendo acceso del hogar:', err);
-        setAuthError(
-          'No se pudo validar tu permiso de ingreso con Firestore. Verificá tu conexión e intentá nuevamente.'
-        );
-        setAccessResolution({ status: 'UNAUTHENTICATED' });
-        setCloudStatus('local');
-      } finally {
-        if (!cancelled) {
-          setAuthChecking(false);
-        }
-      }
+      await runAccessResolutionForUser(user);
     });
 
     return () => {
       cancelled = true;
+      window.clearTimeout(initialSafetyTimer);
       unsubAuth();
     };
-  }, []);
+  }, [runAccessResolutionForUser]);
 
   // Listeners en tiempo real cuando el usuario está AUTHORIZED
   useEffect(() => {
@@ -350,44 +388,25 @@ export default function App() {
     setAuthError(null);
     setAuthChecking(true);
     try {
-      await signInHouseholdGoogle();
+      const signedUser = await signInHouseholdGoogle();
+      if (lastResolvedAuthorizedUidRef.current === signedUser.uid) {
+        setAuthChecking(false);
+        return;
+      }
+      await runAccessResolutionForUser(signedUser);
     } catch (err) {
       setAuthChecking(false);
-      setAuthError(
-        err instanceof Error
-          ? err.message
-          : 'No se pudo completar el inicio de sesión con Google.'
-      );
+      setAuthError(formatFirebaseAuthError(err));
     }
-  }, []);
+  }, [runAccessResolutionForUser]);
 
   const handleRetryApprovalCheck = useCallback(async () => {
     if (!accessResolution || accessResolution.status === 'UNAUTHENTICATED') {
       return;
     }
     if (!('user' in accessResolution)) return;
-    setAuthError(null);
-    setAuthChecking(true);
-    try {
-      const res = await resolveHouseholdAccess(
-        accessResolution.user,
-        loadLocalItems(),
-        loadMinFoodReserveARS()
-      );
-      setAccessResolution(res);
-      if (res.status === 'AUTHORIZED') {
-        setHouseholdDoc(res.household);
-        setMinFoodReserveARS(res.household.minFoodReserveARS);
-        setCloudStatus('connected');
-      }
-    } catch (err) {
-      setAuthError(
-        err instanceof Error ? err.message : 'Error consultando aprobación.'
-      );
-    } finally {
-      setAuthChecking(false);
-    }
-  }, [accessResolution]);
+    await runAccessResolutionForUser(accessResolution.user);
+  }, [accessResolution, runAccessResolutionForUser]);
 
   const handleAuthSignOut = useCallback(async () => {
     await signOutHousehold();
