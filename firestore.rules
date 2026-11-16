@@ -1,0 +1,657 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // Global Hardened Primitives
+    // =========================================================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true;
+    }
+
+    function isPrimaryAdmin() {
+      return isVerifiedUser()
+        && request.auth.token.email.lower() == 'hz.mdiego@gmail.com';
+    }
+
+    function isValidId(id) {
+      return id is string
+        && id.size() >= 1
+        && id.size() <= 128
+        && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isValidPeriod(val) {
+      return val is string
+        && val.size() == 7
+        && val.matches('^[0-9]{4}-(0[1-9]|1[0-2])$');
+    }
+
+    function isValidIsoDate(val) {
+      return val is string
+        && val.size() == 10
+        && val.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    function isValidBoundedStringList(arr, maxItems) {
+      return arr is list
+        && arr.size() >= 1
+        && arr.size() <= maxItems
+        && arr[0] is string
+        && arr[0].size() >= 1
+        && arr[0].size() <= 128;
+    }
+
+    function isValidAttachmentList(arr) {
+      return arr is list
+        && arr.size() <= 20
+        && (
+          arr.size() == 0
+          || (
+            arr[0] is map
+            && arr[0].keys().hasAll([
+              'id',
+              'tipo',
+              'nombre',
+              'mimeType',
+              'driveFileId',
+              'webViewLink',
+              'subidoEn'
+            ])
+            && arr[0].keys().hasOnly([
+              'id',
+              'tipo',
+              'nombre',
+              'mimeType',
+              'driveFileId',
+              'webViewLink',
+              'subidoEn'
+            ])
+            && isValidString(arr[0].id, 1, 128)
+            && arr[0].tipo in ['RESUMEN', 'COMPROBANTE']
+            && isValidString(arr[0].nombre, 1, 200)
+            && isValidString(arr[0].mimeType, 1, 120)
+            && isValidString(arr[0].driveFileId, 1, 200)
+            && isValidString(arr[0].webViewLink, 8, 600)
+            && isValidString(arr[0].subidoEn, 10, 40)
+          )
+        );
+    }
+
+    // =========================================================================
+    // Relational RBAC Helpers (Master Gate — only for get/create/update/delete)
+    // =========================================================================
+    function memberPath(householdId, uid) {
+      return /databases/$(database)/documents/households/$(householdId)/members/$(uid);
+    }
+
+    function invitePath(householdId, inviteId) {
+      return /databases/$(database)/documents/households/$(householdId)/invites/$(inviteId);
+    }
+
+    function householdPath(householdId) {
+      return /databases/$(database)/documents/households/$(householdId);
+    }
+
+    function isActiveMember(householdId) {
+      return isVerifiedUser()
+        && exists(memberPath(householdId, request.auth.uid))
+        && get(memberPath(householdId, request.auth.uid)).data.status == 'ACTIVO';
+    }
+
+    function isHouseholdAdmin(householdId) {
+      return isPrimaryAdmin()
+        || (
+          isActiveMember(householdId)
+          && get(memberPath(householdId, request.auth.uid)).data.role == 'ADMIN'
+        );
+    }
+
+    function isHouseholdCollaborator(householdId) {
+      return isActiveMember(householdId)
+        && get(memberPath(householdId, request.auth.uid)).data.role == 'HERMANA_COMPROBANTES';
+    }
+
+    function isHouseholdParticipant(householdId) {
+      return isHouseholdAdmin(householdId) || isHouseholdCollaborator(householdId);
+    }
+
+    // =========================================================================
+    // Entity Validation Blueprints (NO existing()/diff() inside!)
+    // =========================================================================
+    function isValidHousehold(data) {
+      return data.keys().hasAll([
+          'id',
+          'nombre',
+          'ownerUid',
+          'ownerEmail',
+          'minFoodReserveARS',
+          'allowedUids',
+          'allowedEmails',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'nombre',
+          'ownerUid',
+          'ownerEmail',
+          'minFoodReserveARS',
+          'allowedUids',
+          'allowedEmails',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidString(data.nombre, 1, 80)
+        && isValidString(data.ownerUid, 1, 128)
+        && isValidString(data.ownerEmail, 3, 120)
+        && data.minFoodReserveARS is number
+        && data.minFoodReserveARS >= 0
+        && data.minFoodReserveARS <= 100000000
+        && isValidBoundedStringList(data.allowedUids, 10)
+        && isValidBoundedStringList(data.allowedEmails, 10)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMember(data) {
+      return data.keys().hasAll([
+          'uid',
+          'householdId',
+          'adminUid',
+          'emailLower',
+          'displayName',
+          'role',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid',
+          'householdId',
+          'adminUid',
+          'emailLower',
+          'displayName',
+          'role',
+          'status',
+          'inviteId',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && isValidId(data.householdId)
+        && isValidString(data.adminUid, 1, 128)
+        && isValidString(data.emailLower, 3, 120)
+        && isValidString(data.displayName, 1, 80)
+        && data.role in ['ADMIN', 'HERMANA_COMPROBANTES']
+        && data.status in ['ACTIVO', 'REVOCADO']
+        && (!('inviteId' in data) || isValidId(data.inviteId))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInvite(data) {
+      return data.keys().hasAll([
+          'id',
+          'householdId',
+          'emailLower',
+          'displayName',
+          'role',
+          'status',
+          'invitedByUid',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'householdId',
+          'emailLower',
+          'displayName',
+          'role',
+          'status',
+          'invitedByUid',
+          'claimedByUid',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.householdId)
+        && isValidString(data.emailLower, 3, 120)
+        && isValidString(data.displayName, 1, 80)
+        && data.role in ['ADMIN', 'HERMANA_COMPROBANTES']
+        && data.status in ['PENDIENTE', 'ACEPTADA', 'REVOCADA']
+        && isValidString(data.invitedByUid, 1, 128)
+        && (!('claimedByUid' in data) || isValidString(data.claimedByUid, 1, 128))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAccessRequest(data) {
+      return data.keys().hasAll([
+          'uid',
+          'householdId',
+          'emailLower',
+          'displayName',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid',
+          'householdId',
+          'emailLower',
+          'displayName',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && isValidId(data.householdId)
+        && isValidString(data.emailLower, 3, 120)
+        && isValidString(data.displayName, 1, 80)
+        && data.status in ['PENDIENTE', 'APROBADA', 'RECHAZADA']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidItem(data) {
+      return data.keys().hasAll([
+          'id',
+          'householdId',
+          'ownerUid',
+          'allowedUids',
+          'allowedEmails',
+          'periodo',
+          'titulo',
+          'categoria',
+          'montoPactado',
+          'estado',
+          'diaVencimientoOCobro',
+          'fechaExactaVencimiento',
+          'ventanaAsignada',
+          'bolsilloResponsable',
+          'esCuotaFija',
+          'createdAt',
+          'updatedAt',
+          'updatedByUid'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'householdId',
+          'ownerUid',
+          'allowedUids',
+          'allowedEmails',
+          'periodo',
+          'titulo',
+          'categoria',
+          'subgrupo',
+          'montoPactado',
+          'montoPagado',
+          'estado',
+          'diaVencimientoOCobro',
+          'fechaExactaVencimiento',
+          'fechaCierre',
+          'fechaPagoReal',
+          'ventanaAsignada',
+          'bolsilloResponsable',
+          'esCuotaFija',
+          'cuotaActual',
+          'cuotasTotales',
+          'mesFinEstimado',
+          'montoLiberadoAlExtinguirse',
+          'saldoCapitalTotal',
+          'pagoMinimoExigido',
+          'tnaEstimada',
+          'montoOfertaQuitaContado',
+          'porcentajeQuita',
+          'notas',
+          'adjuntos',
+          'editadoManualmente',
+          'createdAt',
+          'updatedAt',
+          'updatedByUid'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.householdId)
+        && isValidString(data.ownerUid, 1, 128)
+        && isValidBoundedStringList(data.allowedUids, 10)
+        && isValidBoundedStringList(data.allowedEmails, 10)
+        && isValidPeriod(data.periodo)
+        && isValidString(data.titulo, 1, 140)
+        && data.categoria in [
+          'INGRESO_HABITUAL',
+          'INGRESO_EXTRA_SAC',
+          'SERVICIO_HOGAR',
+          'CUOTA_FIJA',
+          'TARJETA_ROTATIVA',
+          'DEUDA_CON_QUITA'
+        ]
+        && (!('subgrupo' in data) || isValidString(data.subgrupo, 0, 80))
+        && data.montoPactado is number
+        && data.montoPactado >= 0
+        && data.montoPactado <= 1000000000
+        && (!('montoPagado' in data) || (data.montoPagado is number && data.montoPagado >= 0 && data.montoPagado <= 1000000000))
+        && data.estado in ['PENDIENTE', 'PAGADO', 'EXTINGUIDO']
+        && data.diaVencimientoOCobro is int
+        && data.diaVencimientoOCobro >= 1
+        && data.diaVencimientoOCobro <= 31
+        && isValidIsoDate(data.fechaExactaVencimiento)
+        && (!('fechaCierre' in data) || isValidIsoDate(data.fechaCierre))
+        && (!('fechaPagoReal' in data) || isValidIsoDate(data.fechaPagoReal))
+        && data.ventanaAsignada in ['Q1_DIAS_1_AL_14', 'Q2_DIAS_15_AL_31']
+        && isValidString(data.bolsilloResponsable, 1, 80)
+        && data.esCuotaFija is bool
+        && (!('cuotaActual' in data) || (data.cuotaActual is int && data.cuotaActual >= 0 && data.cuotaActual <= 240))
+        && (!('cuotasTotales' in data) || (data.cuotasTotales is int && data.cuotasTotales >= 1 && data.cuotasTotales <= 240))
+        && (!('mesFinEstimado' in data) || isValidString(data.mesFinEstimado, 0, 40))
+        && (!('montoLiberadoAlExtinguirse' in data) || (data.montoLiberadoAlExtinguirse is number && data.montoLiberadoAlExtinguirse >= 0 && data.montoLiberadoAlExtinguirse <= 1000000000))
+        && (!('saldoCapitalTotal' in data) || (data.saldoCapitalTotal is number && data.saldoCapitalTotal >= 0 && data.saldoCapitalTotal <= 1000000000))
+        && (!('pagoMinimoExigido' in data) || (data.pagoMinimoExigido is number && data.pagoMinimoExigido >= 0 && data.pagoMinimoExigido <= 1000000000))
+        && (!('tnaEstimada' in data) || (data.tnaEstimada is number && data.tnaEstimada >= 0 && data.tnaEstimada <= 5000))
+        && (!('montoOfertaQuitaContado' in data) || (data.montoOfertaQuitaContado is number && data.montoOfertaQuitaContado >= 0 && data.montoOfertaQuitaContado <= 1000000000))
+        && (!('porcentajeQuita' in data) || (data.porcentajeQuita is number && data.porcentajeQuita >= 0 && data.porcentajeQuita <= 100))
+        && (!('notas' in data) || isValidString(data.notas, 0, 1000))
+        && (!('adjuntos' in data) || isValidAttachmentList(data.adjuntos))
+        && (!('editadoManualmente' in data) || data.editadoManualmente is bool)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && isValidString(data.updatedByUid, 1, 128);
+    }
+
+    // =========================================================================
+    // Collections & Subcollections
+    // =========================================================================
+    match /households/{householdId} {
+      allow get: if isValidId(householdId)
+        && isVerifiedUser()
+        && (
+          isPrimaryAdmin()
+          || request.auth.uid in existing().allowedUids
+          || request.auth.token.email.lower() in existing().allowedEmails
+        );
+      allow list: if false;
+
+      allow create: if isValidId(householdId)
+        && isPrimaryAdmin()
+        && isValidHousehold(incoming())
+        && incoming().id == householdId
+        && incoming().ownerUid == request.auth.uid
+        && incoming().ownerEmail == request.auth.token.email.lower()
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(householdId)
+        && isHouseholdAdmin(householdId)
+        && isValidHousehold(incoming())
+        && incoming().id == existing().id
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().ownerEmail == existing().ownerEmail
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'nombre',
+          'minFoodReserveARS',
+          'allowedUids',
+          'allowedEmails',
+          'updatedAt'
+        ]);
+
+      allow delete: if false;
+
+      // -----------------------------------------------------------------------
+      // Members (PII isolated: readable only by self or household admin)
+      // -----------------------------------------------------------------------
+      match /members/{memberUid} {
+        allow get: if isValidId(householdId)
+          && isValidId(memberUid)
+          && isVerifiedUser()
+          && (request.auth.uid == memberUid || isHouseholdAdmin(householdId));
+
+        allow list: if isVerifiedUser()
+          && (
+            isPrimaryAdmin()
+            || existing().uid == request.auth.uid
+            || existing().adminUid == request.auth.uid
+          );
+
+        allow create: if isValidId(householdId)
+          && isValidId(memberUid)
+          && isVerifiedUser()
+          && isValidMember(incoming())
+          && exists(householdPath(householdId))
+          && incoming().uid == memberUid
+          && incoming().householdId == householdId
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && (
+            isHouseholdAdmin(householdId)
+            || (
+              request.auth.uid == memberUid
+              && incoming().emailLower == request.auth.token.email.lower()
+              && incoming().status == 'ACTIVO'
+              && 'inviteId' in incoming()
+              && exists(invitePath(householdId, incoming().inviteId))
+              && get(invitePath(householdId, incoming().inviteId)).data.status == 'PENDIENTE'
+              && get(invitePath(householdId, incoming().inviteId)).data.emailLower == request.auth.token.email.lower()
+              && incoming().role == get(invitePath(householdId, incoming().inviteId)).data.role
+              && getAfter(invitePath(householdId, incoming().inviteId)).data.status == 'ACEPTADA'
+              && getAfter(invitePath(householdId, incoming().inviteId)).data.claimedByUid == request.auth.uid
+            )
+          );
+
+        allow update: if isValidId(householdId)
+          && isValidId(memberUid)
+          && isHouseholdAdmin(householdId)
+          && isValidMember(incoming())
+          && incoming().uid == existing().uid
+          && incoming().householdId == existing().householdId
+          && incoming().adminUid == existing().adminUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName',
+            'role',
+            'status',
+            'updatedAt'
+          ]);
+
+        allow delete: if isValidId(householdId)
+          && isValidId(memberUid)
+          && isHouseholdAdmin(householdId)
+          && memberUid != request.auth.uid;
+      }
+
+      // -----------------------------------------------------------------------
+      // Invites (PII isolated: admin full control; invitee can get & claim)
+      // -----------------------------------------------------------------------
+      match /invites/{inviteId} {
+        allow get: if isValidId(householdId)
+          && isValidId(inviteId)
+          && isVerifiedUser()
+          && (
+            isHouseholdAdmin(householdId)
+            || existing().emailLower == request.auth.token.email.lower()
+          );
+
+        allow list: if isVerifiedUser()
+          && (
+            isPrimaryAdmin()
+            || existing().invitedByUid == request.auth.uid
+            || existing().emailLower == request.auth.token.email.lower()
+          );
+
+        allow create: if isValidId(householdId)
+          && isValidId(inviteId)
+          && isHouseholdAdmin(householdId)
+          && isValidInvite(incoming())
+          && exists(householdPath(householdId))
+          && incoming().id == inviteId
+          && incoming().householdId == householdId
+          && incoming().invitedByUid == request.auth.uid
+          && incoming().status == 'PENDIENTE'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+
+        allow update: if isValidId(householdId)
+          && isValidId(inviteId)
+          && isVerifiedUser()
+          && isValidInvite(incoming())
+          && incoming().id == existing().id
+          && incoming().householdId == existing().householdId
+          && incoming().emailLower == existing().emailLower
+          && incoming().invitedByUid == existing().invitedByUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            (
+              isHouseholdAdmin(householdId)
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'displayName',
+                'role',
+                'status',
+                'updatedAt'
+              ])
+            )
+            || (
+              existing().status == 'PENDIENTE'
+              && existing().emailLower == request.auth.token.email.lower()
+              && incoming().status == 'ACEPTADA'
+              && incoming().claimedByUid == request.auth.uid
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'status',
+                'claimedByUid',
+                'updatedAt'
+              ])
+              && existsAfter(memberPath(householdId, request.auth.uid))
+            )
+          );
+
+        allow delete: if isValidId(householdId)
+          && isValidId(inviteId)
+          && isHouseholdAdmin(householdId);
+      }
+
+      // -----------------------------------------------------------------------
+      // Access Requests (For uninvited Google sign-ins awaiting Admin approval)
+      // -----------------------------------------------------------------------
+      match /accessRequests/{requestUid} {
+        allow get: if isValidId(householdId)
+          && isValidId(requestUid)
+          && isVerifiedUser()
+          && (request.auth.uid == requestUid || isHouseholdAdmin(householdId));
+
+        allow list: if isVerifiedUser()
+          && (
+            isPrimaryAdmin()
+            || existing().uid == request.auth.uid
+          );
+
+        allow create: if isValidId(householdId)
+          && isValidId(requestUid)
+          && isVerifiedUser()
+          && request.auth.uid == requestUid
+          && isValidAccessRequest(incoming())
+          && incoming().uid == request.auth.uid
+          && incoming().householdId == householdId
+          && incoming().emailLower == request.auth.token.email.lower()
+          && incoming().status == 'PENDIENTE'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+
+        allow update: if isValidId(householdId)
+          && isValidId(requestUid)
+          && isHouseholdAdmin(householdId)
+          && isValidAccessRequest(incoming())
+          && incoming().uid == existing().uid
+          && incoming().householdId == existing().householdId
+          && incoming().emailLower == existing().emailLower
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'status',
+            'updatedAt'
+          ]);
+
+        allow delete: if isValidId(householdId)
+          && isValidId(requestUid)
+          && (isHouseholdAdmin(householdId) || request.auth.uid == requestUid);
+      }
+
+      // -----------------------------------------------------------------------
+      // Household Financial Items (Admin full CRUD; Collaborator adjuntos only)
+      // -----------------------------------------------------------------------
+      match /items/{itemId} {
+        allow get: if isValidId(householdId)
+          && isValidId(itemId)
+          && isHouseholdParticipant(householdId);
+
+        allow list: if isVerifiedUser()
+          && (
+            isPrimaryAdmin()
+            || request.auth.uid in existing().allowedUids
+            || request.auth.token.email.lower() in existing().allowedEmails
+          );
+
+        allow create: if isValidId(householdId)
+          && isValidId(itemId)
+          && isHouseholdAdmin(householdId)
+          && isValidItem(incoming())
+          && exists(householdPath(householdId))
+          && incoming().id == itemId
+          && incoming().householdId == householdId
+          && incoming().updatedByUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+
+        allow update: if isValidId(householdId)
+          && isValidId(itemId)
+          && isVerifiedUser()
+          && isValidItem(incoming())
+          && incoming().id == existing().id
+          && incoming().householdId == existing().householdId
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().updatedByUid == request.auth.uid
+          && (
+            isHouseholdAdmin(householdId)
+            || (
+              isHouseholdCollaborator(householdId)
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'adjuntos',
+                'updatedAt',
+                'updatedByUid'
+              ])
+            )
+          );
+
+        allow delete: if isValidId(householdId)
+          && isValidId(itemId)
+          && isHouseholdAdmin(householdId);
+      }
+    }
+  }
+}

@@ -1,0 +1,468 @@
+{
+  "entities": {
+    "Household": {
+      "title": "Household",
+      "description": "Configuración principal del hogar en ArgenCaja, incluyendo la reserva mínima de comida y la lista acotada de miembros autorizados.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Identificador del hogar (ej. hogar-principal)",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "nombre": {
+          "type": "string",
+          "description": "Nombre del hogar",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "UID del administrador dueño del hogar",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "ownerEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Email verificado del administrador",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "minFoodReserveARS": {
+          "type": "number",
+          "description": "Reserva mínima mensual protegida para comida en pesos argentinos"
+        },
+        "allowedUids": {
+          "type": "array",
+          "description": "Lista acotada (máximo 10) de UIDs autorizados a consultar movimientos del hogar"
+        },
+        "allowedEmails": {
+          "type": "array",
+          "description": "Lista acotada (máximo 10) de emails verificados en minúsculas autorizados al hogar"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de creación en servidor"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp de última actualización en servidor"
+        }
+      },
+      "required": [
+        "id",
+        "nombre",
+        "ownerUid",
+        "ownerEmail",
+        "minFoodReserveARS",
+        "allowedUids",
+        "allowedEmails",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "HouseholdMember": {
+      "title": "HouseholdMember",
+      "description": "Membresía aprobada de un usuario del hogar con su rol estricto (ADMIN o HERMANA_COMPROBANTES).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "UID de Firebase Auth del miembro",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "householdId": {
+          "type": "string",
+          "description": "ID del hogar",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "adminUid": {
+          "type": "string",
+          "description": "UID del administrador del hogar para consultas",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "emailLower": {
+          "type": "string",
+          "format": "email",
+          "description": "Correo electrónico verificado en minúsculas",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Nombre visible del miembro",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "role": {
+          "type": "string",
+          "enum": ["ADMIN", "HERMANA_COMPROBANTES"],
+          "description": "Rol RBAC del miembro"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ACTIVO", "REVOCADO"],
+          "description": "Estado de habilitación de acceso"
+        },
+        "inviteId": {
+          "type": "string",
+          "description": "ID de la invitación aceptada si ingresó mediante pre-invitación",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "householdId",
+        "adminUid",
+        "emailLower",
+        "displayName",
+        "role",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "HouseholdInvite": {
+      "title": "HouseholdInvite",
+      "description": "Pre-invitación por correo creada únicamente por el administrador para habilitar el rol de colaboradora.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "householdId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "emailLower": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "role": {
+          "type": "string",
+          "enum": ["ADMIN", "HERMANA_COMPROBANTES"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PENDIENTE", "ACEPTADA", "REVOCADA"]
+        },
+        "invitedByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "claimedByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "householdId",
+        "emailLower",
+        "displayName",
+        "role",
+        "status",
+        "invitedByUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AccessRequest": {
+      "title": "AccessRequest",
+      "description": "Solicitud de ingreso generada cuando un usuario verificado inicia sesión sin invitación previa.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "householdId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "emailLower": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PENDIENTE", "APROBADA", "RECHAZADA"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "householdId",
+        "emailLower",
+        "displayName",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ItemFinanciero": {
+      "title": "ItemFinanciero",
+      "description": "Movimiento mensual de ingreso, servicio, cuota fija, tarjeta rotativa o deuda con quita.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "householdId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "allowedUids": {
+          "type": "array",
+          "description": "UIDs autorizados del hogar (máximo 10)"
+        },
+        "allowedEmails": {
+          "type": "array",
+          "description": "Emails verificados autorizados del hogar (máximo 10)"
+        },
+        "periodo": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+        },
+        "titulo": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140
+        },
+        "categoria": {
+          "type": "string",
+          "enum": [
+            "INGRESO_HABITUAL",
+            "INGRESO_EXTRA_SAC",
+            "SERVICIO_HOGAR",
+            "CUOTA_FIJA",
+            "TARJETA_ROTATIVA",
+            "DEUDA_CON_QUITA"
+          ]
+        },
+        "subgrupo": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "montoPactado": {
+          "type": "number"
+        },
+        "montoPagado": {
+          "type": "number"
+        },
+        "estado": {
+          "type": "string",
+          "enum": ["PENDIENTE", "PAGADO", "EXTINGUIDO"]
+        },
+        "diaVencimientoOCobro": {
+          "type": "integer"
+        },
+        "fechaExactaVencimiento": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "fechaCierre": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "fechaPagoReal": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "ventanaAsignada": {
+          "type": "string",
+          "enum": ["Q1_DIAS_1_AL_14", "Q2_DIAS_15_AL_31"]
+        },
+        "bolsilloResponsable": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "esCuotaFija": {
+          "type": "boolean"
+        },
+        "cuotaActual": {
+          "type": "integer"
+        },
+        "cuotasTotales": {
+          "type": "integer"
+        },
+        "mesFinEstimado": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "montoLiberadoAlExtinguirse": {
+          "type": "number"
+        },
+        "saldoCapitalTotal": {
+          "type": "number"
+        },
+        "pagoMinimoExigido": {
+          "type": "number"
+        },
+        "tnaEstimada": {
+          "type": "number"
+        },
+        "montoOfertaQuitaContado": {
+          "type": "number"
+        },
+        "porcentajeQuita": {
+          "type": "number"
+        },
+        "notas": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "adjuntos": {
+          "type": "array",
+          "description": "Lista acotada de resúmenes y comprobantes en Google Drive (máximo 20)"
+        },
+        "editadoManualmente": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "id",
+        "householdId",
+        "ownerUid",
+        "allowedUids",
+        "allowedEmails",
+        "periodo",
+        "titulo",
+        "categoria",
+        "montoPactado",
+        "estado",
+        "diaVencimientoOCobro",
+        "fechaExactaVencimiento",
+        "ventanaAsignada",
+        "bolsilloResponsable",
+        "esCuotaFija",
+        "createdAt",
+        "updatedAt",
+        "updatedByUid"
+      ]
+    }
+  },
+  "firestore": {
+    "/households/{householdId}": {
+      "schema": {
+        "$ref": "#/entities/Household"
+      },
+      "description": "Documento raíz del hogar con la reserva de comida y la lista de accesos autorizados."
+    },
+    "/households/{householdId}/members/{memberUid}": {
+      "schema": {
+        "$ref": "#/entities/HouseholdMember"
+      },
+      "description": "Miembros aprobados del hogar y sus roles (ADMIN o HERMANA_COMPROBANTES)."
+    },
+    "/households/{householdId}/invites/{inviteId}": {
+      "schema": {
+        "$ref": "#/entities/HouseholdInvite"
+      },
+      "description": "Pre-invitaciones emitidas exclusivamente por el administrador."
+    },
+    "/households/{householdId}/accessRequests/{requestUid}": {
+      "schema": {
+        "$ref": "#/entities/AccessRequest"
+      },
+      "description": "Solicitudes de acceso de usuarios sin invitación previa pendientes de aprobación."
+    },
+    "/households/{householdId}/items/{itemId}": {
+      "schema": {
+        "$ref": "#/entities/ItemFinanciero"
+      },
+      "description": "Movimientos financieros mensuales del hogar."
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "ArgenCaja — Control Financiero del Hogar",
+  "description": "Aplicación financiera de precisión quincenal en centavos enteros para la economía del hogar en Argentina: flujo de caja, extinción de cuotas, resguardo de comida y sincronización Firestore.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
