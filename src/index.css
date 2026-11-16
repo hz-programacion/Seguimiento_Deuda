@@ -5,10 +5,10 @@
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --color-alabaster-canvas: #f6f6f3;
+  --color-alabaster-canvas: #efefeA;
   --color-alabaster-surface: #ffffff;
-  --color-alabaster-subtle: #eeede8;
-  --color-alabaster-border: #e4e3dd;
+  --color-alabaster-subtle: #f7f7f3;
+  --color-alabaster-border: #dfddd4;
   --color-ink-primary: #111318;
   --color-ink-secondary: #525866;
   --color-cobalt-accent: #1d4ed8;
@@ -21,7 +21,7 @@
 
   html {
     font-family: var(--font-sans);
-    background-color: #f6f6f3;
+    background-color: #efefeA;
     color: #111318;
     scroll-behavior: smooth;
   }

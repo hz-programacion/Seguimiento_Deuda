@@ -293,9 +293,9 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Encabezado */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-3 border-b border-[#D8D6CC] pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#747A88]">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#1D4ED8]">
             Agenda Bancaria y Recordatorios
           </p>
           <h1 className="mt-0.5 font-display text-2xl font-bold tracking-tight text-[#111318] sm:text-3xl">
@@ -315,7 +315,7 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
                 `argencaja-agenda-${activePeriodo}.ics`
               )
             }
-            className="inline-flex items-center gap-1.5 rounded-xl border border-[#E4E3DD] bg-white px-3.5 py-2 text-xs font-semibold text-[#111318] transition-colors hover:bg-[#EEEDE8] whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-[#DFDDD4] bg-white px-3.5 py-2 text-xs font-semibold text-[#111318] shadow-[0_1px_2px_rgba(17,19,24,0.03)] transition-colors hover:bg-[#F7F7F3] whitespace-nowrap"
           >
             <Download className="h-3.5 w-3.5 text-[#1D4ED8]" aria-hidden="true" />
             Exportar .ics del mes
@@ -326,7 +326,7 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
       {/* Barra de Integración con Google Calendar */}
       <section
         aria-label="Sincronización con Google Calendar"
-        className="rounded-2xl border border-[#E4E3DD] bg-white p-5 shadow-[0_1px_2px_rgba(17,19,24,0.03)]"
+        className="rounded-2xl border border-[#DFDDD4] bg-white p-5 shadow-[0_2px_10px_rgba(17,19,24,0.04)]"
       >
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-1">
@@ -527,9 +527,9 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <section
           aria-label="Calendario mensual"
-          className="rounded-2xl border border-[#E4E3DD] bg-white p-4 shadow-[0_1px_2px_rgba(17,19,24,0.03)] sm:p-5 lg:col-span-8"
+          className="overflow-hidden rounded-2xl border border-[#DFDDD4] bg-white shadow-[0_2px_10px_rgba(17,19,24,0.04)] lg:col-span-8"
         >
-          <div className="grid grid-cols-7 gap-1 pb-2 text-center text-[11px] font-semibold uppercase tracking-wider text-[#747A88]">
+          <div className="grid grid-cols-7 gap-1 border-b border-[#E7E5DC] bg-[#F7F7F3] px-4 py-2 text-center text-[11px] font-semibold uppercase tracking-wider text-[#686E7D] sm:px-5">
             {WEEKDAY_HEADERS.map((day) => (
               <div key={day} className="py-1">
                 {day}
@@ -537,7 +537,7 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 gap-1.5 p-4 sm:p-5">
             {gridCells.map((cell) => {
               const dayEvents = eventsByDate.get(cell.dateISO) ?? [];
               const dayGoogleOnly = (googleByDate.get(cell.dateISO) ?? []).filter(
@@ -632,11 +632,11 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
         {/* Panel de Detalle del Día Seleccionado (4 cols) */}
         <aside
           aria-label="Detalle del día seleccionado"
-          className="flex flex-col rounded-2xl border border-[#E4E3DD] bg-white p-5 shadow-[0_1px_2px_rgba(17,19,24,0.03)] lg:col-span-4"
+          className="flex flex-col overflow-hidden rounded-2xl border border-[#DFDDD4] bg-white shadow-[0_2px_10px_rgba(17,19,24,0.04)] lg:col-span-4"
         >
-          <div className="flex items-start justify-between gap-2 border-b border-[#EEEDE8] pb-3.5">
+          <div className="flex items-start justify-between gap-2 border-b border-[#DCE7FE] bg-[#F4F7FF] px-5 py-4">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#747A88]">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#1D4ED8]">
                 Agenda del día
               </p>
               <h2 className="mt-0.5 font-display text-lg font-bold text-[#111318]">
@@ -644,11 +644,13 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
               </h2>
             </div>
             {effectiveSelectedDateISO === referenceDateISO && (
-              <span className="rounded-md border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-0.5 text-[11px] font-semibold text-[#1D4ED8]">
+              <span className="rounded-md border border-[#BFDBFE] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#1D4ED8]">
                 Hoy análisis
               </span>
             )}
           </div>
+
+          <div className="flex flex-1 flex-col p-5">
 
           {selectedDayEvents.length === 0 && selectedDayGoogleEvents.length === 0 ? (
             <div className="my-auto flex flex-col items-center justify-center py-10 text-center">
@@ -818,6 +820,7 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
               )}
             </div>
           )}
+          </div>
         </aside>
       </div>
 

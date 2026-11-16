@@ -728,22 +728,19 @@ export function runCashFlowMatcher(
     );
   });
 
-  // Simulador de Aguinaldo / Excedente
-  const mpRadar = activeItems.find((i) => i.categoria === 'DEUDA_CON_QUITA');
+  // Simulador de Aguinaldo / Excedente sobre capital rotativo activo (Patagonia y Mutual)
   const patagonia = activeItems.find((i) =>
     i.titulo.toLowerCase().includes('patagonia')
   );
-
-  const mpQuitaCents = MoneyUtils.toCents(
-    mpRadar?.montoOfertaQuitaContado ?? 459867.07
+  const mutual = activeItems.find((i) =>
+    i.titulo.toLowerCase().includes('mutual')
   );
-  const mpNominalCents = MoneyUtils.toCents(
-    mpRadar?.saldoCapitalTotal ?? 2179464.81
-  );
-  const ahorroQuitaCents = Math.max(0, mpNominalCents - mpQuitaCents);
 
   const patagoniaCapitalCents = MoneyUtils.toCents(
     patagonia?.saldoCapitalTotal ?? 1258815.9
+  );
+  const mutualCapitalCents = MoneyUtils.toCents(
+    mutual?.saldoCapitalTotal ?? 771476.6
   );
 
   const excedenteExtraordinarioCents =
@@ -753,8 +750,6 @@ export function runCashFlowMatcher(
     ? excedenteExtraordinarioCents
     : Math.max(0, summary.colchonComidaCents - safeMinFoodCents);
 
-  const cubreQuitaCompleta =
-    excedenteParaSimular >= mpQuitaCents && mpQuitaCents > 0;
   const patagoniaReduccionPct =
     patagoniaCapitalCents > 0
       ? Math.min(
@@ -764,19 +759,15 @@ export function runCashFlowMatcher(
       : 0;
 
   let recomendacionTexto =
-    'Activá el Aguinaldo (SAC) o avanzá hacia Enero 2027 para simular cómo cancelar la quita de Mercado Pago o amortizar Banco Patagonia.';
-  if (cubreQuitaCompleta) {
-    recomendacionTexto = `Con tu excedente extraordinario (${MoneyUtils.formatARSCents(
+    'Activá el Aguinaldo (SAC) o avanzá de mes para simular cuánto capital rotativo de Banco Patagonia o Mutual Patronal podés amortizar sin tocar tu comida.';
+  if (excedenteParaSimular >= patagoniaCapitalCents && patagoniaCapitalCents > 0) {
+    recomendacionTexto = `Con tu excedente (${MoneyUtils.formatARSCents(
       excedenteParaSimular
-    )}) podés cancelar al 100% la quita de Mercado Pago (${MoneyUtils.formatARSCents(
-      mpQuitaCents
-    )}), extinguiendo ${MoneyUtils.formatARSCents(
-      mpNominalCents
-    )} de deuda nominal (ahorro neto de ${MoneyUtils.formatARSCents(
-      ahorroQuitaCents
-    )}) y dejando ${MoneyUtils.formatARSCents(
-      excedenteParaSimular - mpQuitaCents
-    )} de resguardo extra.`;
+    )}) cubrís el 100% del capital de Banco Patagonia (${MoneyUtils.formatARSCents(
+      patagoniaCapitalCents
+    )}) y todavía te quedan ${MoneyUtils.formatARSCents(
+      excedenteParaSimular - patagoniaCapitalCents
+    )} para reducir Mutual (${MoneyUtils.formatARSCents(mutualCapitalCents)}).`;
   } else if (excedenteParaSimular > 0) {
     recomendacionTexto = `Tu excedente de ${MoneyUtils.formatARSCents(
       excedenteParaSimular
@@ -788,10 +779,10 @@ export function runCashFlowMatcher(
   const simuladorExcedente: SurplusRecommendation = {
     tieneExcedente,
     excedenteBaseCents: excedenteParaSimular,
-    mercadoPagoQuitaCents: mpQuitaCents,
-    mercadoPagoNominalCents: mpNominalCents,
-    ahorroQuitaCents,
-    cubreQuitaCompleta,
+    mercadoPagoQuitaCents: 0,
+    mercadoPagoNominalCents: 0,
+    ahorroQuitaCents: 0,
+    cubreQuitaCompleta: false,
     patagoniaCapitalCents,
     patagoniaReduccionPct,
     recomendacionTexto,

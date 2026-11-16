@@ -31,7 +31,6 @@ const CATEGORIAS: Array<{ value: CategoriaMovimiento; label: string }> = [
     label: 'Ingreso Habitual (Sueldo, Jubilación...)',
   },
   { value: 'INGRESO_EXTRA_SAC', label: 'Ingreso Extra / Aguinaldo (SAC)' },
-  { value: 'DEUDA_CON_QUITA', label: 'Deuda con Oferta de Quita' },
 ];
 
 export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({

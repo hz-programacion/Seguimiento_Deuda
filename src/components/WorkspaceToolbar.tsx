@@ -88,7 +88,7 @@ export const WorkspaceToolbar: React.FC<WorkspaceToolbarProps> = ({
   return (
     <section
       aria-label="Controles del período"
-      className="border-b border-[#E4E3DD] bg-[#F6F6F3]"
+      className="border-b border-[#DFDDD4] bg-[#F7F7F3]"
     >
       <div className="mx-auto flex max-w-[1400px] flex-col gap-2.5 px-4 py-2.5 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
         {/* Selector compacto de meses + siguiente mes */}

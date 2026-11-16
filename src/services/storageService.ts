@@ -66,7 +66,16 @@ export function loadLocalItems(): ItemFinanciero[] {
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed as ItemFinanciero[];
+      const cleaned = (parsed as ItemFinanciero[]).filter(
+        (it) =>
+          it.id !== 'dic26-radar-mp-quita' && it.categoria !== 'DEUDA_CON_QUITA'
+      );
+      if (cleaned.length > 0) {
+        if (cleaned.length !== parsed.length) {
+          saveLocalItems(cleaned);
+        }
+        return cleaned;
+      }
     }
   } catch (err) {
     console.warn('Error leyendo localStorage, restaurando semilla:', err);

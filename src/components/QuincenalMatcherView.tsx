@@ -78,12 +78,11 @@ const QuincenaColumn: React.FC<{
   onQuickUpdateAmount,
   onMoveVentana,
 }) => {
-  const oppositeVentana: VentanaQuincena =
-    caja.ventana === 'Q1_DIAS_1_AL_14'
-      ? 'Q2_DIAS_15_AL_31'
-      : 'Q1_DIAS_1_AL_14';
-  const moveLabel =
-    caja.ventana === 'Q1_DIAS_1_AL_14' ? 'Pasar a 2°Q' : 'Pasar a 1°Q';
+  const isFirstHalf = caja.ventana === 'Q1_DIAS_1_AL_14';
+  const oppositeVentana: VentanaQuincena = isFirstHalf
+    ? 'Q2_DIAS_15_AL_31'
+    : 'Q1_DIAS_1_AL_14';
+  const moveLabel = isFirstHalf ? 'Pasar a 2°Q' : 'Pasar a 1°Q';
 
   const safeCap = Math.max(1, caja.presupuestoPagableSinComidaCents);
   const utilizationPct = Math.min(
@@ -96,53 +95,61 @@ const QuincenaColumn: React.FC<{
   return (
     <section
       aria-labelledby={`heading-${caja.ventana}`}
-      className="flex flex-col rounded-2xl border border-[#E4E3DD] bg-white p-5 shadow-[0_1px_2px_rgba(17,19,24,0.03)] sm:p-6"
+      className="flex flex-col overflow-hidden rounded-2xl border border-[#DFDDD4] bg-white shadow-[0_2px_10px_rgba(17,19,24,0.04)]"
     >
-      <div className="flex items-start justify-between gap-4 border-b border-[#EEEDE8] pb-4">
+      {/* Cabecera distintiva de quincena */}
+      <div
+        className={`flex items-start justify-between gap-4 border-b px-6 py-4 ${
+          isFirstHalf
+            ? 'border-[#DCE7FE] bg-[#F4F7FF]'
+            : 'border-[#E7E5DC] bg-[#F7F7F3]'
+        }`}
+      >
         <div>
+          <span className="font-mono-tabular text-[11px] font-bold uppercase tracking-wider text-[#1D4ED8]">
+            {isFirstHalf ? 'Ventana 01' : 'Ventana 02'}
+          </span>
           <h2
             id={`heading-${caja.ventana}`}
-            className="font-display text-lg font-bold text-[#111318]"
+            className="mt-0.5 font-display text-lg font-bold text-[#111318]"
           >
-            {caja.ventana === 'Q1_DIAS_1_AL_14'
-              ? '1° Quincena'
-              : '2° Quincena'}
+            {isFirstHalf ? '1° Quincena' : '2° Quincena'}
           </h2>
           <p className="text-xs text-[#525866]">{caja.rangoDias}</p>
         </div>
         <div className="text-right">
-          <p className="text-[11px] uppercase tracking-wider text-[#747A88]">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-[#686E7D]">
             Caja disponible
           </p>
-          <p className="font-mono-tabular text-lg font-bold text-[#1D4ED8]">
+          <p className="mt-0.5 font-mono-tabular text-xl font-bold text-[#1D4ED8]">
             {MoneyUtils.formatARSCents(caja.disponibleTotalCents)}
           </p>
         </div>
       </div>
 
-      {/* 4 métricas + medidor de carga */}
-      <div className="space-y-3 border-b border-[#EEEDE8] py-4">
+      {/* Bloque 1: 4 métricas + medidor de carga */}
+      <div className="space-y-3 border-b border-[#ECEAE2] px-6 py-4">
         <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-          <div>
-            <p className="text-[#747A88]">Ingresos (+arrastre)</p>
+          <div className="rounded-xl border border-[#ECEAE2] bg-[#FAF9F6] p-2.5">
+            <p className="text-[11px] text-[#686E7D]">Ingresos</p>
             <p className="mt-0.5 font-mono-tabular font-bold text-[#111318]">
               {MoneyUtils.formatARSCents(caja.disponibleTotalCents)}
             </p>
           </div>
-          <div>
-            <p className="text-[#747A88]">Comida protegida</p>
+          <div className="rounded-xl border border-[#DCE7FE] bg-[#F4F7FF] p-2.5">
+            <p className="text-[11px] text-[#1D4ED8]">Comida mín.</p>
             <p className="mt-0.5 font-mono-tabular font-bold text-[#1D4ED8]">
               {MoneyUtils.formatARSCents(caja.reservaComidaSugeridaCents)}
             </p>
           </div>
-          <div>
-            <p className="text-[#747A88]">Tope seguro</p>
+          <div className="rounded-xl border border-[#E0E7FF] bg-[#F5F3FF] p-2.5">
+            <p className="text-[11px] text-[#4338CA]">Tope seguro</p>
             <p className="mt-0.5 font-mono-tabular font-bold text-[#4338CA]">
               {MoneyUtils.formatARSCents(caja.presupuestoPagableSinComidaCents)}
             </p>
           </div>
-          <div>
-            <p className="text-[#747A88]">Recomendado hoy</p>
+          <div className="rounded-xl border border-[#ECEAE2] bg-[#FAF9F6] p-2.5">
+            <p className="text-[11px] text-[#686E7D]">Hoy pagable</p>
             <p className="mt-0.5 font-mono-tabular font-bold text-[#111318]">
               {MoneyUtils.formatARSCents(caja.totalRecomendadoAhoraCents)}
             </p>
@@ -165,7 +172,7 @@ const QuincenaColumn: React.FC<{
               )}
             </span>
           </div>
-          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#EEEDE8]">
+          <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-[#ECEAE2]">
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${utilizationPct}%` }}
@@ -179,7 +186,7 @@ const QuincenaColumn: React.FC<{
       </div>
 
       {(caja.totalEsperandoCierreCents > 0 || caja.totalExcedeTopeCents > 0) && (
-        <div className="mt-3 flex flex-wrap gap-3 border-b border-[#EEEDE8] pb-3 font-mono-tabular text-[11px]">
+        <div className="flex flex-wrap gap-3 border-b border-[#ECEAE2] bg-[#FFFBEB]/60 px-6 py-2.5 font-mono-tabular text-[11px]">
           {caja.totalEsperandoCierreCents > 0 && (
             <span className="font-semibold text-[#B45309]">
               Esperando cierre:{' '}
@@ -195,9 +202,9 @@ const QuincenaColumn: React.FC<{
         </div>
       )}
 
-      {/* Ingresos */}
-      <div className="border-b border-[#EEEDE8] py-4">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-[#747A88]">
+      {/* Bloque 2: Ingresos */}
+      <div className="border-b border-[#ECEAE2] bg-[#FAF9F6] px-6 py-4">
+        <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#686E7D]">
           De dónde entra la plata
         </h3>
         <div className="mt-2.5 space-y-2">
@@ -234,10 +241,10 @@ const QuincenaColumn: React.FC<{
         </div>
       </div>
 
-      {/* Obligaciones calzadas */}
-      <div className="flex-1 pt-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-[#747A88]">
+      {/* Bloque 3: Obligaciones calzadas */}
+      <div className="flex-1 px-6 py-4">
+        <div className="flex items-center justify-between pb-2">
+          <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#686E7D]">
             Pagos de esta quincena ({caja.asignaciones.length})
           </h3>
           <span className="font-mono-tabular text-xs font-bold text-[#111318]">
@@ -250,11 +257,11 @@ const QuincenaColumn: React.FC<{
             No hay vencimientos asignados en esta quincena.
           </p>
         ) : (
-          <div className="mt-3 divide-y divide-[#EEEDE8]">
+          <div className="divide-y divide-[#ECEAE2]">
             {caja.asignaciones.map((alloc) => {
               const statusMeta = getStatusIndicator(alloc.bankingStatus);
               return (
-                <div key={alloc.obligacion.id} className="py-3.5 space-y-1.5">
+                <div key={alloc.obligacion.id} className="space-y-2 py-3.5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
@@ -319,7 +326,7 @@ const QuincenaColumn: React.FC<{
                               onMoveVentana(alloc.obligacion, oppositeVentana)
                             }
                             title={`Mover a la otra quincena (${moveLabel})`}
-                            className="inline-flex items-center gap-1 rounded-lg border border-[#E4E3DD] bg-[#F6F6F3] px-2.5 py-1 text-[11px] font-medium text-[#111318] hover:bg-[#EEEDE8]"
+                            className="inline-flex items-center gap-1 rounded-lg border border-[#DFDDD4] bg-[#F7F7F3] px-2.5 py-1 text-[11px] font-medium text-[#111318] hover:bg-[#ECEAE2]"
                           >
                             <ArrowLeftRight
                               className="h-3 w-3"
@@ -343,7 +350,7 @@ const QuincenaColumn: React.FC<{
                   </div>
 
                   {alloc.avisoBancario && (
-                    <p className="rounded-lg bg-[#F6F6F3] px-3 py-2 text-[11px] leading-relaxed text-[#525866]">
+                    <p className="rounded-lg border border-[#ECEAE2] bg-[#FAF9F6] px-3 py-2 text-[11px] leading-relaxed text-[#525866]">
                       {alloc.avisoBancario}
                     </p>
                   )}
@@ -381,8 +388,10 @@ const QuincenaColumn: React.FC<{
       </div>
 
       {/* Saldo libre al cierre */}
-      <div className="mt-4 flex items-center justify-between border-t border-[#EEEDE8] pt-4 text-sm">
-        <span className="text-[#525866]">Plata libre tras pagar cuentas</span>
+      <div className="flex items-center justify-between border-t border-[#E7E5DC] bg-[#F7F7F3] px-6 py-4 text-sm">
+        <span className="font-medium text-[#525866]">
+          Plata libre tras pagar cuentas
+        </span>
         <span
           className={`font-mono-tabular font-bold ${
             caja.saldoLibrePostPagosCents >= 0
@@ -409,10 +418,10 @@ export const QuincenalMatcherView: React.FC<QuincenalMatcherViewProps> = ({
   const { q1, q2, alertaDescalce, summary, referenceDateISO } = matchResult;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-7">
+      <div className="flex flex-col gap-3 border-b border-[#D8D6CC] pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#747A88]">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#1D4ED8]">
             Calce de Liquidez
           </p>
           <h1 className="mt-0.5 font-display text-2xl font-bold tracking-tight text-[#111318] sm:text-3xl">
@@ -423,7 +432,7 @@ export const QuincenalMatcherView: React.FC<QuincenalMatcherViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 rounded-xl border border-[#BFDBFE] bg-white px-3.5 py-2 text-xs">
+        <div className="flex items-center gap-2 rounded-xl border border-[#BFDBFE] bg-white px-3.5 py-2 text-xs shadow-[0_1px_2px_rgba(17,19,24,0.03)]">
           <ShieldCheck
             className="h-4 w-4 text-[#1D4ED8] shrink-0"
             aria-hidden="true"
@@ -441,10 +450,10 @@ export const QuincenalMatcherView: React.FC<QuincenalMatcherViewProps> = ({
 
       <div
         role="status"
-        className={`flex items-start gap-3 rounded-2xl border p-4 ${
+        className={`flex items-start gap-3 rounded-2xl border p-4 shadow-[0_1px_3px_rgba(17,19,24,0.03)] ${
           alertaDescalce.hayDescalce
-            ? 'border-[#FDE68A] bg-[#FFFBEB]'
-            : 'border-[#BFDBFE] bg-[#EFF6FF]/60'
+            ? 'border-[#F59E0B]/40 bg-[#FFFBEB]'
+            : 'border-[#BFDBFE] bg-white'
         }`}
       >
         {alertaDescalce.hayDescalce ? (

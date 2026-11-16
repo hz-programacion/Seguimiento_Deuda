@@ -289,7 +289,22 @@ export default function App() {
       user,
       role,
       (cloudItems) => {
-        setItems(cloudItems);
+        const legacyQuita = cloudItems.filter(
+          (it) =>
+            it.id === 'dic26-radar-mp-quita' ||
+            it.categoria === 'DEUDA_CON_QUITA'
+        );
+        const cleanedCloudItems = cloudItems.filter(
+          (it) =>
+            it.id !== 'dic26-radar-mp-quita' &&
+            it.categoria !== 'DEUDA_CON_QUITA'
+        );
+        if (legacyQuita.length > 0 && role === 'ADMIN') {
+          for (const legacy of legacyQuita) {
+            deleteHouseholdItem(legacy.id).catch(() => {});
+          }
+        }
+        setItems(cleanedCloudItems);
         setCloudStatus('connected');
       },
       (err) => {
@@ -990,7 +1005,7 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="min-h-screen bg-[#F6F6F3] text-[#111318]">
+      <div className="min-h-screen bg-[#EFEFEA] text-[#111318]">
         <HeaderNav
         activeTab={activeTab}
         canEditFinances={canEditFinances}

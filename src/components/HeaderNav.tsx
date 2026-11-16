@@ -16,10 +16,10 @@ interface HeaderNavProps {
 
 const NAV_ITEMS: Array<{ id: AppTab; label: string }> = [
   { id: 'tablero', label: 'Tablero' },
-  { id: 'calendario', label: 'Calendario' },
   { id: 'checklist', label: 'Movimientos' },
   { id: 'quincenas', label: 'Quincenas' },
   { id: 'extincion', label: 'Extinción' },
+  { id: 'calendario', label: 'Calendario' },
 ];
 
 export const HeaderNav: React.FC<HeaderNavProps> = ({
@@ -33,7 +33,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
   onSignOut,
 }) => {
   return (
-    <header className="sticky top-0 z-30 border-b border-[#E4E3DD] bg-[#FFFFFF]/90 backdrop-blur-md">
+    <header className="sticky top-0 z-30 border-b border-[#DFDDD4] bg-[#FFFFFF]/95 backdrop-blur-md">
       <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-6 px-4 py-3 sm:px-6 lg:px-8">
         {/* Zona 1: Wordmark limpio */}
         <button

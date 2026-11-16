@@ -17,7 +17,7 @@ export const SEED_SAC_ITEM_DIC_2026: ItemFinanciero = {
   ventanaAsignada: 'Q2_DIAS_15_AL_31',
   bolsilloResponsable: 'Aguinaldo',
   esCuotaFija: false,
-  notas: 'Ingreso extraordinario de Diciembre (SAC). Ideal para cancelar quita de Mercado Pago o reducir capital de Patagonia.',
+  notas: 'Ingreso extraordinario de Diciembre (SAC). Ideal para reforzar el colchón del hogar o amortizar capital de tarjetas.',
 };
 
 export function createSeedDecember2026(): ItemFinanciero[] {
@@ -336,28 +336,6 @@ export function createSeedDecember2026(): ItemFinanciero[] {
       pagoMinimoExigido: 354646.07,
       tnaEstimada: 105.0,
       notas: 'Bloqueada. Tras pago previo de $1.201.000 queda capital de $1.258.815,90. En Enero cae la cuota de $180.000 y baja a ~$174.646.',
-    },
-
-    // =========================================================================
-    // MÓDULO RADAR DE OPORTUNIDAD (PASIVO CONTINGENTE)
-    // =========================================================================
-    {
-      id: 'dic26-radar-mp-quita',
-      periodo: '2026-12',
-      titulo: 'Mercado Libre / Mercado Pago (Mora Situación 4)',
-      categoria: 'DEUDA_CON_QUITA',
-      subgrupo: 'Radar Oportunidad',
-      montoPactado: 0,
-      estado: 'PENDIENTE',
-      diaVencimientoOCobro: 28,
-      fechaExactaVencimiento: '2026-12-28',
-      ventanaAsignada: 'Q2_DIAS_15_AL_31',
-      bolsilloResponsable: 'Aguinaldo',
-      esCuotaFija: false,
-      saldoCapitalTotal: 2179464.81,
-      montoOfertaQuitaContado: 459867.07,
-      porcentajeQuita: 78.9,
-      notas: 'Oferta de quita activa (78.9% OFF). No forma parte del pasivo fijo mensual; usar excedentes o aguinaldo para cancelar.',
     },
   ];
 }
