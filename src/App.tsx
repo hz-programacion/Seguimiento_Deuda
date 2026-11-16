@@ -69,6 +69,7 @@ import { DashboardBento } from './components/DashboardBento';
 import { CalendarPlannerView } from './components/CalendarPlannerView';
 import { PaymentChecklist } from './components/PaymentChecklist';
 import { QuincenalMatcherView } from './components/QuincenalMatcherView';
+import { TarjetasView } from './components/TarjetasView';
 import { ExtinctionTimelineView } from './components/ExtinctionTimelineView';
 import { MarkPaidModal } from './components/MarkPaidModal';
 import { ItemEditorModal } from './components/ItemEditorModal';
@@ -1044,7 +1045,7 @@ export default function App() {
         }}
       />
 
-      <main className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <main className="mx-auto max-w-[1400px] px-4 pt-5 pb-24 sm:px-6 sm:py-8 md:pb-10 lg:px-8">
         {toastMessage && (
           <div
             role="status"
@@ -1087,7 +1088,6 @@ export default function App() {
                   setIsEditorOpen(true);
                 }}
                 onQuickUpdateAmount={handleQuickUpdateAmount}
-                onQuickUpdateCapital={handleQuickUpdateCapital}
                 onQuickUpdateDates={handleQuickUpdateDates}
                 onOpenReceipts={(item) => setReceiptsItemId(item.id)}
                 onNavigateTab={setActiveTab}
@@ -1148,8 +1148,41 @@ export default function App() {
                   if (!canEditFinances) return;
                   setPayingItem(item);
                 }}
+                onUndoPaid={handleUndoPaid}
+                onEditItem={(item) => {
+                  if (!canEditFinances) return;
+                  setEditingItem(item);
+                  setIsEditorOpen(true);
+                }}
                 onQuickUpdateAmount={handleQuickUpdateAmount}
+                onQuickUpdateDates={handleQuickUpdateDates}
+                onOpenReceipts={(item) => setReceiptsItemId(item.id)}
                 onMoveVentana={handleMoveVentana}
+              />
+            )}
+
+            {activeTab === 'tarjetas' && (
+              <TarjetasView
+                matchResult={matchResult}
+                periodItems={periodItems}
+                canEditFinances={canEditFinances}
+                minFoodReserveARS={minFoodReserveARS}
+                onChangeMinFoodReserveARS={handleChangeMinFoodReserveARS}
+                onMarkPaid={(item) => {
+                  if (!canEditFinances) return;
+                  setPayingItem(item);
+                }}
+                onUndoPaid={handleUndoPaid}
+                onEditItem={(item) => {
+                  if (!canEditFinances) return;
+                  setEditingItem(item);
+                  setIsEditorOpen(true);
+                }}
+                onQuickUpdateAmount={handleQuickUpdateAmount}
+                onQuickUpdateCapital={handleQuickUpdateCapital}
+                onQuickUpdateDates={handleQuickUpdateDates}
+                onOpenReceipts={(item) => setReceiptsItemId(item.id)}
+                onNavigateTab={setActiveTab}
               />
             )}
 
@@ -1158,8 +1191,10 @@ export default function App() {
                 matchResult={matchResult}
                 periodItems={periodItems}
                 canEditFinances={canEditFinances}
-                minFoodReserveARS={minFoodReserveARS}
-                onChangeMinFoodReserveARS={handleChangeMinFoodReserveARS}
+                onMarkPaid={(item) => {
+                  if (!canEditFinances) return;
+                  setPayingItem(item);
+                }}
                 onEditItem={(item) => {
                   if (!canEditFinances) return;
                   setEditingItem(item);
@@ -1167,6 +1202,8 @@ export default function App() {
                 }}
                 onQuickUpdateAmount={handleQuickUpdateAmount}
                 onQuickUpdateDates={handleQuickUpdateDates}
+                onOpenReceipts={(item) => setReceiptsItemId(item.id)}
+                onNavigateTab={setActiveTab}
               />
             )}
           </motion.div>

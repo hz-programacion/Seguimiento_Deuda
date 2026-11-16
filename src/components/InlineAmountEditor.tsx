@@ -67,7 +67,7 @@ export const InlineAmountEditor: React.FC<InlineAmountEditorProps> = ({
 
   if (isEditing) {
     return (
-      <div className="inline-flex items-center gap-1">
+      <div className="inline-flex items-center gap-1.5">
         <label htmlFor={inputId} className="sr-only">
           Nuevo monto para {itemTitle}
         </label>
@@ -75,6 +75,7 @@ export const InlineAmountEditor: React.FC<InlineAmountEditorProps> = ({
           ref={inputRef}
           id={inputId}
           type="number"
+          inputMode="decimal"
           step="0.01"
           min="0"
           value={draft}
@@ -91,7 +92,7 @@ export const InlineAmountEditor: React.FC<InlineAmountEditorProps> = ({
               cancel();
             }
           }}
-          className={`w-28 rounded-lg border bg-white px-2 py-1 text-right font-mono-tabular text-xs text-[#111318] focus-visible:outline-none focus-visible:ring-2 ${
+          className={`w-28 min-h-[34px] rounded-lg border bg-white px-2.5 py-1 text-right font-mono-tabular text-xs text-[#111318] focus-visible:outline-none focus-visible:ring-2 ${
             error
               ? 'border-[#DC2626] focus-visible:ring-[#DC2626]'
               : 'border-[#1D4ED8] focus-visible:ring-[#1D4ED8]'
@@ -101,7 +102,7 @@ export const InlineAmountEditor: React.FC<InlineAmountEditorProps> = ({
           type="button"
           onClick={commit}
           aria-label={`Guardar monto de ${itemTitle}`}
-          className="rounded-lg bg-[#1D4ED8] p-1 text-white hover:bg-[#1E40AF]"
+          className="inline-flex min-h-[34px] min-w-[34px] items-center justify-center rounded-lg bg-[#1D4ED8] p-1.5 text-white hover:bg-[#1E40AF]"
         >
           <Check className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
@@ -109,7 +110,7 @@ export const InlineAmountEditor: React.FC<InlineAmountEditorProps> = ({
           type="button"
           onClick={cancel}
           aria-label={`Cancelar edición de ${itemTitle}`}
-          className="rounded-lg border border-[#E4E3DD] bg-[#F6F6F3] p-1 text-[#525866] hover:bg-[#EEEDE8] hover:text-[#111318]"
+          className="inline-flex min-h-[34px] min-w-[34px] items-center justify-center rounded-lg border border-[#E4E3DD] bg-[#F6F6F3] p-1.5 text-[#525866] hover:bg-[#EEEDE8] hover:text-[#111318]"
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
@@ -123,7 +124,7 @@ export const InlineAmountEditor: React.FC<InlineAmountEditorProps> = ({
       onClick={() => setIsEditing(true)}
       title="Clic para modificar este monto en el mes activo"
       aria-label={`Editar monto de ${itemTitle}: ${prefix}${MoneyUtils.formatARS(amount)}`}
-      className={`group inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 font-mono-tabular transition-colors hover:bg-[#EFF6FF] ${textClassName}`}
+      className={`group inline-flex min-h-[30px] items-center gap-1.5 rounded-md px-1.5 py-0.5 font-mono-tabular transition-colors hover:bg-[#EFF6FF] ${textClassName}`}
     >
       <span>
         {prefix}

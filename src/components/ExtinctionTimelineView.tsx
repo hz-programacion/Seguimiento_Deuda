@@ -1,9 +1,16 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'motion/react';
-import { CalendarCheck2, Pencil, Sparkles } from 'lucide-react';
-import { CashFlowMatchResult, ItemFinanciero } from '../types/finance';
+import {
+  ArrowUpRight,
+  CalendarCheck2,
+  Check,
+  CreditCard,
+  Paperclip,
+  Pencil,
+  TrendingDown,
+} from 'lucide-react';
+import { AppTab, CashFlowMatchResult, ItemFinanciero } from '../types/finance';
 import { addMonthsToPeriodo, formatPeriodoLabel } from '../utils/dateUtils';
-import { estimateMonthlyCardInterestCents } from '../utils/cashFlowMatcher';
 import { MoneyUtils } from '../utils/moneyUtils';
 import { InlineAmountEditor } from './InlineAmountEditor';
 import { InlineDateEditor } from './InlineDateEditor';
@@ -12,14 +19,15 @@ interface ExtinctionTimelineViewProps {
   matchResult: CashFlowMatchResult;
   periodItems: ItemFinanciero[];
   canEditFinances: boolean;
-  minFoodReserveARS: number;
-  onChangeMinFoodReserveARS: (val: number) => void;
+  onMarkPaid: (item: ItemFinanciero) => void;
   onEditItem: (item: ItemFinanciero) => void;
   onQuickUpdateAmount: (item: ItemFinanciero, newAmount: number) => void;
   onQuickUpdateDates: (
     item: ItemFinanciero,
     updates: { fechaExactaVencimiento?: string; fechaCierre?: string }
   ) => void;
+  onOpenReceipts: (item: ItemFinanciero) => void;
+  onNavigateTab: (tab: AppTab) => void;
 }
 
 interface DynamicMilestone {
@@ -33,13 +41,17 @@ export const ExtinctionTimelineView: React.FC<ExtinctionTimelineViewProps> = ({
   matchResult,
   periodItems,
   canEditFinances,
-  minFoodReserveARS,
-  onChangeMinFoodReserveARS,
+  onMarkPaid,
   onEditItem,
   onQuickUpdateAmount,
   onQuickUpdateDates,
+  onOpenReceipts,
+  onNavigateTab,
 }) => {
-  const [extraCapitalSimARS, setExtraCapitalSimARS] = useState<number>(500000);
+  const extinguishedItems = useMemo(
+    () => periodItems.filter((i) => i.estado === 'EXTINGUIDO'),
+    [periodItems]
+  );
 
   const fixedQuotas = useMemo(
     () =>
@@ -109,64 +121,92 @@ export const ExtinctionTimelineView: React.FC<ExtinctionTimelineViewProps> = ({
       .slice(0, 3);
   }, [fixedQuotas, matchResult.summary.periodo, periodItems]);
 
-  const patagoniaCard = periodItems.find(
-    (i) =>
-      i.categoria === 'TARJETA_ROTATIVA' &&
-      i.titulo.toLowerCase().includes('patagonia')
-  );
-  const mutualCard = periodItems.find(
-    (i) =>
-      i.categoria === 'TARJETA_ROTATIVA' &&
-      i.titulo.toLowerCase().includes('mutual')
-  );
-
-  const patCapARS = patagoniaCard?.saldoCapitalTotal ?? 1258815.9;
-  const patTna = patagoniaCard?.tnaEstimada ?? 105;
-  const patNewCapitalARS = Math.max(0, patCapARS - extraCapitalSimARS);
-  const patMonthlyIntBefore = estimateMonthlyCardInterestCents(patCapARS, patTna);
-  const patMonthlyIntAfter = estimateMonthlyCardInterestCents(
-    patNewCapitalARS,
-    patTna
-  );
-  const patMonthlyIntSaved = Math.max(
-    0,
-    patMonthlyIntBefore - patMonthlyIntAfter
-  );
-
-  const mutualCapARS = mutualCard?.saldoCapitalTotal ?? 771476.6;
-  const mutualTna = mutualCard?.tnaEstimada ?? 98.5;
-  const mutualNewCapitalARS = Math.max(0, mutualCapARS - extraCapitalSimARS);
-  const mutualMonthlyIntBefore = estimateMonthlyCardInterestCents(
-    mutualCapARS,
-    mutualTna
-  );
-  const mutualMonthlyIntAfter = estimateMonthlyCardInterestCents(
-    mutualNewCapitalARS,
-    mutualTna
-  );
-  const mutualMonthlyIntSaved = Math.max(
-    0,
-    mutualMonthlyIntBefore - mutualMonthlyIntAfter
-  );
-
   const totalCuotasMensualesCents = MoneyUtils.sumCents(
     fixedQuotas.map((q) => MoneyUtils.toCents(q.montoPactado))
   );
 
   return (
     <div className="space-y-8">
-      <div className="border-b border-[#D8D6CC] pb-5">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#1D4ED8]">
-          Hoja de Ruta de Desendeudamiento
-        </p>
-        <h1 className="mt-0.5 font-display text-2xl font-bold tracking-tight text-[#111318] sm:text-3xl">
-          Cuándo Terminan tus Cuotas ·{' '}
-          {formatPeriodoLabel(matchResult.summary.periodo)}
-        </h1>
-        <p className="mt-1 text-xs text-[#525866] sm:text-sm">
-          Hitos calculados en tiempo real según tus cuotas activas, liberación mensual de caja y simulador de amortización de tarjetas.
-        </p>
+      <div className="flex flex-col gap-3 border-b border-[#D8D6CC] pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#4338CA]">
+            Hoja de Ruta de Cuotas Fijas
+          </p>
+          <h1 className="mt-0.5 font-display text-2xl font-bold tracking-tight text-[#111318] sm:text-3xl">
+            Cuotas y Extinción ·{' '}
+            {formatPeriodoLabel(matchResult.summary.periodo)}
+          </h1>
+          <p className="mt-1 text-xs text-[#525866] sm:text-sm">
+            Seguimiento exclusivo de planes en cuotas: fechas de liberación mensual y alivio ganado al terminar cada plan.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onNavigateTab('tarjetas')}
+          className="inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border border-[#DFDDD4] bg-white px-3.5 py-2 text-xs font-semibold text-[#111318] transition-colors hover:bg-[#F7F7F3] whitespace-nowrap shrink-0"
+        >
+          <CreditCard className="h-3.5 w-3.5 text-[#DC2626]" aria-hidden="true" />
+          <span>Ir a Simulador de Tarjetas</span>
+          <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
       </div>
+
+      {/* Alivio Ganado detalle cuando hay cuotas extinguidas */}
+      {extinguishedItems.length > 0 && (
+        <section
+          aria-labelledby="cuotas-alivio-heading"
+          className="overflow-hidden rounded-2xl border border-[#C7D2FE] bg-white shadow-[0_2px_8px_rgba(67,56,202,0.06)]"
+        >
+          <div className="flex flex-col gap-3 border-b border-[#E0E7FF] bg-[#EEF2FF] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2
+                id="cuotas-alivio-heading"
+                className="flex items-center gap-2 font-display text-base font-bold text-[#4338CA]"
+              >
+                <TrendingDown className="h-4 w-4" aria-hidden="true" />
+                Alivio Ganado · Cuotas Ya Finalizadas ({extinguishedItems.length})
+              </h2>
+              <p className="mt-0.5 text-xs text-[#525866]">
+                Planes completamente saldados que ya liberaron presupuesto fijo este mes.
+              </p>
+            </div>
+            <div className="text-left sm:text-right">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#686E7D]">
+                Ahorro mensual liberado
+              </p>
+              <p className="font-mono-tabular text-xl font-bold text-[#4338CA]">
+                +{MoneyUtils.formatARSCents(matchResult.summary.alivioMensualGanadoCents)}/mes
+              </p>
+            </div>
+          </div>
+
+          <div className="divide-y divide-[#ECEAE2] px-6">
+            {extinguishedItems.map((ext) => (
+              <div
+                key={ext.id}
+                className="flex flex-col gap-1 py-3.5 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-[#111318]">
+                    {ext.titulo}
+                  </p>
+                  <p className="text-xs text-[#525866]">
+                    {ext.notas ??
+                      `Finalizada en cuota ${ext.cuotaActual}/${ext.cuotasTotales}`}
+                  </p>
+                </div>
+                <div className="font-mono-tabular text-xs font-bold text-[#4338CA]">
+                  FINALIZADA · Liberó{' '}
+                  {MoneyUtils.formatARS(
+                    ext.montoLiberadoAlExtinguirse ?? ext.montoPactado
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Hitos dinámicos */}
       {dynamicMilestones.length > 0 && (
@@ -245,7 +285,7 @@ export const ExtinctionTimelineView: React.FC<ExtinctionTimelineViewProps> = ({
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-[#DFDDD4] bg-white shadow-[0_2px_10px_rgba(17,19,24,0.04)]">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E7E5DC] bg-[#F7F7F3] px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#E7E5DC] bg-[#F7F7F3] px-5 py-4 sm:px-6">
             <span className="flex items-center gap-2 font-display text-base font-bold text-[#111318]">
               <CalendarCheck2
                 className="h-4 w-4 text-[#1D4ED8]"
@@ -258,229 +298,135 @@ export const ExtinctionTimelineView: React.FC<ExtinctionTimelineViewProps> = ({
             </span>
           </div>
 
-          <div className="divide-y divide-[#ECEAE2] px-6">
-            {fixedQuotas.map((item) => {
-              const actual = item.cuotaActual ?? 1;
-              const total = item.cuotasTotales ?? 1;
-              const pct = Math.min(100, Math.round((actual / total) * 100));
-              const restantes = Math.max(0, total - actual);
+          {fixedQuotas.length === 0 ? (
+            <div className="px-6 py-12 text-center text-xs text-[#525866]">
+              No quedan cuotas fijas activas pendientes en este período.
+            </div>
+          ) : (
+            <div className="divide-y divide-[#ECEAE2] px-5 sm:px-6">
+              {fixedQuotas.map((item) => {
+                const actual = item.cuotaActual ?? 1;
+                const total = item.cuotasTotales ?? 1;
+                const pct = Math.min(100, Math.round((actual / total) * 100));
+                const restantes = Math.max(0, total - actual);
+                const attachCount = item.adjuntos?.length ?? 0;
 
-              return (
-                <div key={item.id} className="space-y-2.5 py-4">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-sm font-bold text-[#111318]">
-                          {item.titulo}
-                        </span>
-                        {canEditFinances && (
+                return (
+                  <div key={item.id} className="space-y-2.5 py-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-bold text-[#111318]">
+                            {item.titulo}
+                          </span>
+                          <span
+                            className={`text-xs font-bold ${
+                              item.estado === 'PAGADO'
+                                ? 'text-[#1D4ED8]'
+                                : 'text-[#B45309]'
+                            }`}
+                          >
+                            · {item.estado}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 font-mono-tabular text-xs text-[#525866]">
+                          <span>
+                            Cuota {actual}/{total} (
+                            {restantes === 0
+                              ? 'última cuota'
+                              : `faltan ${restantes}`}
+                            )
+                          </span>
+                          <span>·</span>
+                          <InlineDateEditor
+                            itemTitle={item.titulo}
+                            label="Vence"
+                            dateISO={item.fechaExactaVencimiento}
+                            readOnly={!canEditFinances}
+                            onSaveDate={(val) =>
+                              onQuickUpdateDates(item, {
+                                fechaExactaVencimiento: val,
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 font-mono-tabular sm:justify-end">
+                        <div className="flex items-center gap-2">
+                          <InlineAmountEditor
+                            itemTitle={item.titulo}
+                            amount={item.montoPactado}
+                            readOnly={!canEditFinances}
+                            textClassName="text-sm font-bold text-[#111318]"
+                            onSaveAmount={(val) => onQuickUpdateAmount(item, val)}
+                          />
+                          <span className="text-xs font-bold text-[#4338CA]">
+                            {pct}%
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 font-sans">
                           <button
                             type="button"
-                            onClick={() => onEditItem(item)}
-                            aria-label={`Editar todo de ${item.titulo}`}
-                            className="rounded p-0.5 text-[#747A88] hover:text-[#1D4ED8]"
+                            onClick={() => onOpenReceipts(item)}
+                            aria-label={`Comprobantes de ${item.titulo}`}
+                            className={`inline-flex min-h-[32px] items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${
+                              attachCount > 0
+                                ? 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]'
+                                : 'border-[#DFDDD4] bg-[#F7F7F3] text-[#525866]'
+                            }`}
                           >
-                            <Pencil className="h-3 w-3" aria-hidden="true" />
+                            <Paperclip className="h-3 w-3" aria-hidden="true" />
+                            {attachCount > 0 && (
+                              <span className="font-mono-tabular font-semibold">
+                                {attachCount}
+                              </span>
+                            )}
                           </button>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 font-mono-tabular text-xs text-[#525866]">
-                        <span>
-                          Cuota {actual}/{total} (
-                          {restantes === 0
-                            ? 'última cuota'
-                            : `faltan ${restantes}`}
-                          )
-                        </span>
-                        <span>·</span>
-                        <InlineDateEditor
-                          itemTitle={item.titulo}
-                          label="Vence"
-                          dateISO={item.fechaExactaVencimiento}
-                          readOnly={!canEditFinances}
-                          onSaveDate={(val) =>
-                            onQuickUpdateDates(item, {
-                              fechaExactaVencimiento: val,
-                            })
-                          }
-                        />
+
+                          {canEditFinances && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => onEditItem(item)}
+                                aria-label={`Editar todo de ${item.titulo}`}
+                                className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center rounded-lg border border-[#DFDDD4] bg-[#F7F7F3] p-1 text-[#525866] hover:text-[#111318]"
+                              >
+                                <Pencil className="h-3 w-3" aria-hidden="true" />
+                              </button>
+                              {item.estado === 'PENDIENTE' && (
+                                <button
+                                  type="button"
+                                  onClick={() => onMarkPaid(item)}
+                                  aria-label={`Marcar pagado ${item.titulo}`}
+                                  className="inline-flex min-h-[32px] items-center gap-1 rounded-lg bg-[#1D4ED8] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#1E40AF]"
+                                >
+                                  <Check className="h-3 w-3" aria-hidden="true" />
+                                  Pagar
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 font-mono-tabular">
-                      <InlineAmountEditor
-                        itemTitle={item.titulo}
-                        amount={item.montoPactado}
-                        readOnly={!canEditFinances}
-                        textClassName="text-sm font-bold text-[#111318]"
-                        onSaveAmount={(val) => onQuickUpdateAmount(item, val)}
+
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-[#ECEAE2]">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                        className={`h-full ${
+                          restantes === 0 ? 'bg-[#4338CA]' : 'bg-[#1D4ED8]'
+                        }`}
                       />
-                      <span className="text-xs font-bold text-[#4338CA]">
-                        {pct}%
-                      </span>
                     </div>
                   </div>
-
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-[#ECEAE2]">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${pct}%` }}
-                      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                      className={`h-full ${
-                        restantes === 0 ? 'bg-[#4338CA]' : 'bg-[#1D4ED8]'
-                      }`}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* Simulador de Amortización de Tarjetas */}
-      <section aria-labelledby="simulador-tarjetas-heading" className="space-y-4">
-        <div className="flex items-center gap-3">
-          <span className="font-mono-tabular text-[11px] font-bold text-[#1D4ED8]">
-            03
-          </span>
-          <h2
-            id="simulador-tarjetas-heading"
-            className="font-display text-sm font-bold uppercase tracking-[0.1em] text-[#111318] whitespace-nowrap"
-          >
-            Simulador de Amortización
-          </h2>
-          <div className="h-px flex-1 bg-[#D8D6CC]" aria-hidden="true" />
-        </div>
-
-        <div className="overflow-hidden rounded-2xl border border-[#DFDDD4] bg-white shadow-[0_2px_10px_rgba(17,19,24,0.04)]">
-          <div className="flex flex-col gap-3 border-b border-[#DCE7FE] bg-[#F4F7FF] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="flex items-center gap-2 font-display text-base font-bold text-[#111318]">
-                <Sparkles className="h-4 w-4 text-[#4338CA]" aria-hidden="true" />
-                Impacto de Pagos Extra en Tarjetas Rotativas
-              </h3>
-              <p className="mt-0.5 text-xs text-[#525866]">
-                Simulá cuánto interés mensual ahorrás bajando capital puro sin alterar tus saldos reales ni tocar el mínimo de comida.
-              </p>
+                );
+              })}
             </div>
-
-            <div className="flex items-center gap-2 rounded-xl border border-[#BFDBFE] bg-white px-3 py-1.5 text-xs shrink-0">
-              <label
-                htmlFor="min-food-reserve-input"
-                className="text-[#525866] whitespace-nowrap"
-              >
-                Mínimo comida:
-              </label>
-              <input
-                id="min-food-reserve-input"
-                type="number"
-                step="10000"
-                min="0"
-                disabled={!canEditFinances}
-                value={minFoodReserveARS}
-                onChange={(e) => {
-                  const val = Number(e.target.value);
-                  if (Number.isFinite(val) && val >= 0) {
-                    onChangeMinFoodReserveARS(val);
-                  }
-                }}
-                className="w-24 bg-transparent text-right font-mono-tabular font-bold text-[#1D4ED8] focus:outline-none disabled:opacity-70"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-5 p-6">
-            <p className="rounded-xl border border-[#ECEAE2] bg-[#FAF9F6] px-4 py-3 text-xs leading-relaxed text-[#525866]">
-              {matchResult.simuladorExcedente.recomendacionTexto}
-            </p>
-
-            <div className="space-y-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-bold text-[#111318]">
-                    Simular inyección de capital / aguinaldo:{' '}
-                    <span className="font-mono-tabular text-[#1D4ED8]">
-                      {MoneyUtils.formatARS(extraCapitalSimARS)}
-                    </span>
-                  </p>
-                  <p className="text-[11px] text-[#525866]">
-                    Deslizá o elegí un monto rápido para comparar el ahorro en Banco Patagonia vs Mutual Patronal.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {[250000, 500000, 750000, 1000000].map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => setExtraCapitalSimARS(preset)}
-                      className={`rounded-lg border px-2.5 py-1 font-mono-tabular text-[11px] font-semibold transition-colors ${
-                        extraCapitalSimARS === preset
-                          ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]'
-                          : 'border-[#DFDDD4] bg-[#F7F7F3] text-[#525866] hover:text-[#111318]'
-                      }`}
-                    >
-                      +{MoneyUtils.formatCompactCents(preset * 100)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <input
-                type="range"
-                aria-label="Monto extra a simular en pesos"
-                min={0}
-                max={1500000}
-                step={25000}
-                value={extraCapitalSimARS}
-                onChange={(e) => setExtraCapitalSimARS(Number(e.target.value))}
-                className="w-full accent-[#1D4ED8] cursor-pointer"
-              />
-
-              <div className="grid grid-cols-1 gap-4 pt-2 text-xs sm:grid-cols-2">
-                <div className="rounded-xl border border-[#DCE7FE] bg-[#F4F7FF] p-4">
-                  <p className="font-bold text-[#111318]">
-                    Opción A · Amortizar Banco Patagonia
-                  </p>
-                  <p className="mt-1.5 leading-relaxed text-[#525866]">
-                    Baja el capital adeudado de{' '}
-                    <span className="font-mono-tabular font-semibold text-[#111318]">
-                      {MoneyUtils.formatARS(patCapARS)}
-                    </span>{' '}
-                    a{' '}
-                    <span className="font-mono-tabular font-bold text-[#111318]">
-                      {MoneyUtils.formatARS(patNewCapitalARS)}
-                    </span>{' '}
-                    y ahorrás aprox.{' '}
-                    <span className="font-mono-tabular font-bold text-[#1D4ED8]">
-                      {MoneyUtils.formatARSCents(patMonthlyIntSaved)}/mes
-                    </span>{' '}
-                    en intereses (TNA {patTna}%).
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-[#E0E7FF] bg-[#F5F3FF] p-4">
-                  <p className="font-bold text-[#111318]">
-                    Opción B · Amortizar Mutual Patronal
-                  </p>
-                  <p className="mt-1.5 leading-relaxed text-[#525866]">
-                    Baja el capital adeudado de{' '}
-                    <span className="font-mono-tabular font-semibold text-[#111318]">
-                      {MoneyUtils.formatARS(mutualCapARS)}
-                    </span>{' '}
-                    a{' '}
-                    <span className="font-mono-tabular font-bold text-[#111318]">
-                      {MoneyUtils.formatARS(mutualNewCapitalARS)}
-                    </span>{' '}
-                    y ahorrás aprox.{' '}
-                    <span className="font-mono-tabular font-bold text-[#4338CA]">
-                      {MoneyUtils.formatARSCents(mutualMonthlyIntSaved)}/mes
-                    </span>{' '}
-                    en intereses (TNA {mutualTna}%).
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </section>
     </div>

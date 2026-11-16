@@ -2,9 +2,11 @@ import React, { useMemo, useState } from 'react';
 import {
   CalendarCheck,
   CalendarClock,
+  CalendarDays,
   CheckCircle2,
   Download,
   ExternalLink,
+  List,
   LogOut,
   RefreshCw,
   Sparkles,
@@ -114,6 +116,11 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
   onNotify,
 }) => {
   const [filter, setFilter] = useState<CalendarFilter>('TODOS');
+  const [viewMode, setViewMode] = useState<'grilla' | 'agenda'>(() =>
+    typeof window !== 'undefined' && window.innerWidth < 768
+      ? 'agenda'
+      : 'grilla'
+  );
   const [selectedDateISO, setSelectedDateISO] = useState<string>(referenceDateISO);
   const [reminderLead, setReminderLead] = useState<CalendarReminderLead>('1-day-before');
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEventItem[]>([]);
@@ -139,6 +146,16 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
       return true;
     });
   }, [plannedEvents, filter]);
+
+  const groupedAgendaDays = useMemo(() => {
+    const map = new Map<string, CalendarPlannedEvent[]>();
+    for (const ev of filteredEvents) {
+      const list = map.get(ev.dateISO) ?? [];
+      list.push(ev);
+      map.set(ev.dateISO, list);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [filteredEvents]);
 
   const gridCells = useMemo(
     () => buildCalendarMonthGrid(activePeriodo),
@@ -175,7 +192,6 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
     return map;
   }, [googleEvents]);
 
-  // Asegurar que la fecha seleccionada pertenezca al período activo si cambió el mes
   const effectiveSelectedDateISO = selectedDateISO.startsWith(activePeriodo)
     ? selectedDateISO
     : referenceDateISO.startsWith(activePeriodo)
@@ -290,6 +306,93 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
     onNotify(`Archivo de calendario descargado: ${filename}`);
   };
 
+  const renderEventActions = (ev: CalendarPlannedEvent) => {
+    const linkedGoogle = googleByArgenKey.get(ev.eventKey);
+    const itemObj = itemsMap.get(ev.itemId);
+
+    return (
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        {hasWorkspaceToken &&
+          (linkedGoogle ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1D4ED8]">
+                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                En Google Calendar
+              </span>
+              {linkedGoogle.htmlLink && (
+                <a
+                  href={linkedGoogle.htmlLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-[#525866] hover:text-[#111318]"
+                >
+                  Abrir
+                  <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                </a>
+              )}
+              <button
+                type="button"
+                disabled={syncLoading}
+                onClick={() =>
+                  setPendingMutation({
+                    type: 'delete-google',
+                    googleEvent: linkedGoogle,
+                  })
+                }
+                aria-label={`Quitar ${ev.title} de Google Calendar`}
+                className="inline-flex min-h-[30px] items-center gap-1 rounded-md border border-[#FECACA] bg-[#FEF2F2] px-2 py-0.5 text-[11px] font-medium text-[#B91C1C] hover:bg-[#FEE2E2]"
+              >
+                <Trash2 className="h-3 w-3" aria-hidden="true" />
+                Quitar
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={syncLoading}
+              onClick={() =>
+                setPendingMutation({
+                  type: 'create-single',
+                  event: ev,
+                })
+              }
+              className="inline-flex min-h-[32px] items-center gap-1 rounded-lg bg-[#1D4ED8] px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-[#1E40AF]"
+            >
+              <CalendarCheck className="h-3 w-3" aria-hidden="true" />
+              Agendar en Google Calendar
+            </button>
+          ))}
+
+        <button
+          type="button"
+          onClick={() =>
+            handleDownloadICS(
+              [ev],
+              `argencaja-${ev.dateISO}-${ev.kind.toLowerCase()}.ics`
+            )
+          }
+          className="inline-flex min-h-[32px] items-center gap-1 rounded-lg border border-[#E4E3DD] bg-[#F6F6F3] px-2.5 py-1 text-[11px] font-medium text-[#111318] hover:bg-[#EEEDE8]"
+        >
+          <Download className="h-3 w-3" aria-hidden="true" />
+          .ics
+        </button>
+
+        {canEditFinances &&
+          itemObj &&
+          itemObj.estado === 'PENDIENTE' &&
+          ev.kind === 'VENCIMIENTO' && (
+            <button
+              type="button"
+              onClick={() => onMarkPaid(itemObj)}
+              className="inline-flex min-h-[32px] items-center gap-1 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-semibold text-[#1D4ED8] hover:bg-[#DBEAFE]"
+            >
+              Marcar Pagado
+            </button>
+          )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       {/* Encabezado */}
@@ -307,6 +410,39 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <div
+            role="group"
+            aria-label="Modo de visualización del calendario"
+            className="inline-flex items-center gap-1 rounded-xl border border-[#DFDDD4] bg-white p-1 shadow-[0_1px_2px_rgba(17,19,24,0.03)]"
+          >
+            <button
+              type="button"
+              aria-pressed={viewMode === 'agenda'}
+              onClick={() => setViewMode('agenda')}
+              className={`inline-flex min-h-[32px] items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition-colors ${
+                viewMode === 'agenda'
+                  ? 'bg-[#1D4ED8] text-white'
+                  : 'text-[#525866] hover:text-[#111318]'
+              }`}
+            >
+              <List className="h-3.5 w-3.5" aria-hidden="true" />
+              Agenda
+            </button>
+            <button
+              type="button"
+              aria-pressed={viewMode === 'grilla'}
+              onClick={() => setViewMode('grilla')}
+              className={`inline-flex min-h-[32px] items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition-colors ${
+                viewMode === 'grilla'
+                  ? 'bg-[#1D4ED8] text-white'
+                  : 'text-[#525866] hover:text-[#111318]'
+              }`}
+            >
+              <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+              Grilla
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={() =>
@@ -315,10 +451,10 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
                 `argencaja-agenda-${activePeriodo}.ics`
               )
             }
-            className="inline-flex items-center gap-1.5 rounded-xl border border-[#DFDDD4] bg-white px-3.5 py-2 text-xs font-semibold text-[#111318] shadow-[0_1px_2px_rgba(17,19,24,0.03)] transition-colors hover:bg-[#F7F7F3] whitespace-nowrap"
+            className="inline-flex min-h-[38px] items-center gap-1.5 rounded-xl border border-[#DFDDD4] bg-white px-3.5 py-2 text-xs font-semibold text-[#111318] shadow-[0_1px_2px_rgba(17,19,24,0.03)] transition-colors hover:bg-[#F7F7F3] whitespace-nowrap"
           >
             <Download className="h-3.5 w-3.5 text-[#1D4ED8]" aria-hidden="true" />
-            Exportar .ics del mes
+            Exportar .ics
           </button>
         </div>
       </div>
@@ -330,7 +466,7 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
       >
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <CalendarCheck
                 className="h-4 w-4 text-[#1D4ED8]"
                 aria-hidden="true"
@@ -352,7 +488,7 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            <label className="inline-flex items-center gap-1.5 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-3 py-2 text-xs text-[#525866]">
+            <label className="inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-3 py-1.5 text-xs text-[#525866]">
               <span>Alerta:</span>
               <select
                 aria-label="Anticipación de recordatorio"
@@ -387,7 +523,7 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
                     setSyncLoading(false);
                   }
                 }}
-                className="inline-flex items-center gap-2.5 rounded-xl border border-[#D4D2CA] bg-white px-4 py-2 text-xs font-semibold text-[#111318] shadow-xs transition-colors hover:bg-[#F6F6F3] disabled:opacity-60 whitespace-nowrap"
+                className="inline-flex min-h-[38px] items-center gap-2.5 rounded-xl border border-[#D4D2CA] bg-white px-4 py-2 text-xs font-semibold text-[#111318] shadow-xs transition-colors hover:bg-[#F6F6F3] disabled:opacity-60 whitespace-nowrap"
               >
                 <svg className="h-4 w-4 shrink-0" viewBox="0 0 48 48" aria-hidden="true">
                   <path
@@ -415,7 +551,7 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
                   type="button"
                   disabled={syncLoading}
                   onClick={handleFetchGoogleMonth}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-3 py-2 text-xs font-semibold text-[#111318] transition-colors hover:bg-[#EEEDE8] disabled:opacity-60 whitespace-nowrap"
+                  className="inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] px-3 py-1.5 text-xs font-semibold text-[#111318] transition-colors hover:bg-[#EEEDE8] disabled:opacity-60 whitespace-nowrap"
                 >
                   <RefreshCw
                     className={`h-3.5 w-3.5 ${syncLoading ? 'animate-spin' : ''}`}
@@ -433,7 +569,7 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
                       events: unscheduledPendingEvents,
                     })
                   }
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#1D4ED8] px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1E40AF] disabled:opacity-50 whitespace-nowrap"
+                  className="inline-flex min-h-[36px] items-center gap-1.5 rounded-xl bg-[#1D4ED8] px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#1E40AF] disabled:opacity-50 whitespace-nowrap"
                 >
                   <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                   Agendar pendientes ({unscheduledPendingEvents.length})
@@ -444,7 +580,8 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
                   disabled={syncLoading}
                   onClick={onSignOutWorkspace}
                   title="Desconectar sesión de Google Workspace"
-                  className="inline-flex items-center gap-1 rounded-xl border border-[#E4E3DD] bg-white px-2.5 py-2 text-xs font-medium text-[#525866] hover:bg-[#F6F6F3] hover:text-[#111318]"
+                  aria-label="Desconectar Google Calendar"
+                  className="inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-xl border border-[#E4E3DD] bg-white px-2.5 py-1.5 text-xs font-medium text-[#525866] hover:bg-[#F6F6F3] hover:text-[#111318]"
                 >
                   <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
@@ -463,7 +600,7 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
         )}
       </section>
 
-      {/* Filtros + Leyenda limpia */}
+      {/* Filtros + Leyenda */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div
           role="tablist"
@@ -487,7 +624,7 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
                 role="tab"
                 aria-selected={active}
                 onClick={() => setFilter(tab.id)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ${
+                className={`min-h-[34px] rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap ${
                   active
                     ? 'bg-[#1D4ED8] text-white'
                     : 'text-[#525866] hover:bg-[#F6F6F3] hover:text-[#111318]'
@@ -523,306 +660,319 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
         </div>
       </div>
 
-      {/* Grilla Mensual (8 cols) + Agenda del Día Seleccionado (4 cols) */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+      {viewMode === 'agenda' ? (
+        /* Vista Agenda cronológica (ideal en celular o lectura secuencial) */
         <section
-          aria-label="Calendario mensual"
-          className="overflow-hidden rounded-2xl border border-[#DFDDD4] bg-white shadow-[0_2px_10px_rgba(17,19,24,0.04)] lg:col-span-8"
+          aria-label="Agenda cronológica del mes"
+          className="space-y-4"
         >
-          <div className="grid grid-cols-7 gap-1 border-b border-[#E7E5DC] bg-[#F7F7F3] px-4 py-2 text-center text-[11px] font-semibold uppercase tracking-wider text-[#686E7D] sm:px-5">
-            {WEEKDAY_HEADERS.map((day) => (
-              <div key={day} className="py-1">
-                {day}
-              </div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-1.5 p-4 sm:p-5">
-            {gridCells.map((cell) => {
-              const dayEvents = eventsByDate.get(cell.dateISO) ?? [];
-              const dayGoogleOnly = (googleByDate.get(cell.dateISO) ?? []).filter(
-                (ge) => !ge.argenCajaKey
-              );
-              const isSelected = cell.dateISO === effectiveSelectedDateISO;
-              const isTodayRef = cell.dateISO === referenceDateISO;
-
-              return (
-                <button
-                  key={cell.dateISO}
-                  type="button"
-                  onClick={() => setSelectedDateISO(cell.dateISO)}
-                  aria-label={`Ver agenda del ${formatDateAR(cell.dateISO)}`}
-                  aria-pressed={isSelected}
-                  className={`flex min-h-[76px] flex-col items-start justify-between rounded-xl border p-1.5 text-left transition-all sm:min-h-[92px] sm:p-2 ${
-                    isSelected
-                      ? 'border-[#1D4ED8] bg-[#EFF6FF]/60 ring-1 ring-[#1D4ED8]'
-                      : cell.inCurrentMonth
-                        ? 'border-[#EEEDE8] bg-white hover:border-[#D4D2CA] hover:bg-[#FAF9F6]'
-                        : 'border-transparent bg-[#F6F6F3]/60 text-[#9CA3AF]'
-                  }`}
-                >
-                  <div className="flex w-full items-center justify-between gap-1">
-                    <span
-                      className={`inline-flex h-5 w-5 items-center justify-center rounded-full font-mono-tabular text-[11px] font-semibold ${
-                        isTodayRef
-                          ? 'bg-[#1D4ED8] text-white'
-                          : cell.inCurrentMonth
-                            ? 'text-[#111318]'
-                            : 'text-[#9CA3AF]'
-                      }`}
-                    >
-                      {cell.dayNumber}
-                    </span>
-                    {dayEvents.some((e) => googleByArgenKey.has(e.eventKey)) && (
-                      <CalendarCheck
-                        className="h-3 w-3 text-[#1D4ED8]"
-                        aria-label="Agendado en Google Calendar"
-                      />
-                    )}
-                  </div>
-
-                  {/* Marcadores visibles en escritorio + puntos compactos en móvil */}
-                  <div className="mt-1 w-full space-y-0.5">
-                    {dayEvents.slice(0, 2).map((ev) => {
-                      const meta = getKindMeta(ev.kind, ev.isUrgent, ev.isPaid);
-                      return (
-                        <div
-                          key={ev.eventKey}
-                          className="hidden sm:flex items-center gap-1 truncate rounded px-1 py-0.5 text-[10px] font-medium bg-[#F6F6F3] text-[#111318]"
-                        >
-                          <span
-                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dotClass}`}
-                          />
-                          <span className="truncate">
-                            {ev.title.replace(/^(Vence:|Límite hábil:|Cobro:|Habilitada para pagar:|Última cuota.*?:\s*)/, '')}
-                          </span>
-                        </div>
-                      );
-                    })}
-                    {dayEvents.length > 2 && (
-                      <span className="hidden sm:block pl-1 font-mono-tabular text-[10px] font-semibold text-[#525866]">
-                        +{dayEvents.length - 2} más
-                      </span>
-                    )}
-                    {dayEvents.length > 0 && (
-                      <div className="flex sm:hidden flex-wrap gap-1 pt-1">
-                        {dayEvents.slice(0, 4).map((ev) => {
-                          const meta = getKindMeta(ev.kind, ev.isUrgent, ev.isPaid);
-                          return (
-                            <span
-                              key={ev.eventKey}
-                              className={`h-1.5 w-1.5 rounded-full ${meta.dotClass}`}
-                            />
-                          );
-                        })}
-                      </div>
-                    )}
-                    {dayGoogleOnly.length > 0 && dayEvents.length === 0 && (
-                      <span className="hidden sm:block truncate pl-1 text-[10px] text-[#747A88]">
-                        {dayGoogleOnly[0].summary}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Panel de Detalle del Día Seleccionado (4 cols) */}
-        <aside
-          aria-label="Detalle del día seleccionado"
-          className="flex flex-col overflow-hidden rounded-2xl border border-[#DFDDD4] bg-white shadow-[0_2px_10px_rgba(17,19,24,0.04)] lg:col-span-4"
-        >
-          <div className="flex items-start justify-between gap-2 border-b border-[#DCE7FE] bg-[#F4F7FF] px-5 py-4">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#1D4ED8]">
-                Agenda del día
-              </p>
-              <h2 className="mt-0.5 font-display text-lg font-bold text-[#111318]">
-                {formatDateAR(effectiveSelectedDateISO)}
-              </h2>
-            </div>
-            {effectiveSelectedDateISO === referenceDateISO && (
-              <span className="rounded-md border border-[#BFDBFE] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#1D4ED8]">
-                Hoy análisis
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-1 flex-col p-5">
-
-          {selectedDayEvents.length === 0 && selectedDayGoogleEvents.length === 0 ? (
-            <div className="my-auto flex flex-col items-center justify-center py-10 text-center">
+          {groupedAgendaDays.length === 0 ? (
+            <div className="rounded-2xl border border-[#DFDDD4] bg-white px-6 py-12 text-center shadow-[0_2px_10px_rgba(17,19,24,0.04)]">
               <CalendarClock
-                className="h-7 w-7 text-[#9CA3AF]"
+                className="mx-auto h-7 w-7 text-[#9CA3AF]"
                 aria-hidden="true"
               />
               <p className="mt-2.5 text-sm font-semibold text-[#111318]">
-                Sin movimientos este día
-              </p>
-              <p className="mt-1 text-xs text-[#525866]">
-                Elegí otro día marcado en el calendario para inspeccionar pagos, ventanas o cobros.
+                No hay eventos en esta categoría
               </p>
             </div>
           ) : (
-            <div className="mt-3 divide-y divide-[#EEEDE8]">
-              {selectedDayEvents.map((ev) => {
-                const meta = getKindMeta(ev.kind, ev.isUrgent, ev.isPaid);
-                const linkedGoogle = googleByArgenKey.get(ev.eventKey);
-                const itemObj = itemsMap.get(ev.itemId);
+            groupedAgendaDays.map(([dateISO, dayEvs]) => {
+              const isTodayRef = dateISO === referenceDateISO;
+              return (
+                <div
+                  key={dateISO}
+                  className="overflow-hidden rounded-2xl border border-[#DFDDD4] bg-white shadow-[0_2px_10px_rgba(17,19,24,0.04)]"
+                >
+                  <div
+                    className={`flex items-center justify-between gap-2 border-b px-5 py-3 ${
+                      isTodayRef
+                        ? 'border-[#BFDBFE] bg-[#EFF6FF]'
+                        : 'border-[#E7E5DC] bg-[#F7F7F3]'
+                    }`}
+                  >
+                    <h2 className="font-display text-sm font-bold text-[#111318]">
+                      {formatDateAR(dateISO)}
+                    </h2>
+                    {isTodayRef && (
+                      <span className="font-mono-tabular text-[11px] font-bold text-[#1D4ED8]">
+                        Hoy análisis
+                      </span>
+                    )}
+                  </div>
+                  <div className="divide-y divide-[#ECEAE2] px-5">
+                    {dayEvs.map((ev) => {
+                      const meta = getKindMeta(ev.kind, ev.isUrgent, ev.isPaid);
+                      return (
+                        <div key={ev.eventKey} className="space-y-2 py-4">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 space-y-1">
+                              <span
+                                className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+                                  meta.dotClass === 'bg-[#DC2626]'
+                                    ? 'text-[#DC2626]'
+                                    : meta.dotClass === 'bg-[#D97706]'
+                                      ? 'text-[#B45309]'
+                                      : meta.dotClass === 'bg-[#4338CA]'
+                                        ? 'text-[#4338CA]'
+                                        : meta.dotClass === 'bg-[#1D4ED8]'
+                                          ? 'text-[#1D4ED8]'
+                                          : 'text-[#525866]'
+                                }`}
+                              >
+                                <span
+                                  className={`h-1.5 w-1.5 rounded-full ${meta.dotClass}`}
+                                />
+                                {meta.label}
+                              </span>
+                              <h3 className="text-sm font-bold text-[#111318]">
+                                {ev.title}
+                              </h3>
+                            </div>
+                            <span className="font-mono-tabular text-sm font-bold text-[#111318] shrink-0">
+                              {ev.kind === 'COBRO' ? '+' : ''}
+                              {MoneyUtils.formatARS(ev.amountARS)}
+                            </span>
+                          </div>
+
+                          <p className="text-xs leading-relaxed text-[#525866]">
+                            {ev.description}
+                          </p>
+                          {ev.shiftedFromWeekend && ev.originalDueISO && (
+                            <p className="text-[11px] font-medium text-[#B45309]">
+                              Adelantado al viernes hábil (vencía el{' '}
+                              {formatShortDateAR(ev.originalDueISO)}).
+                            </p>
+                          )}
+                          {renderEventActions(ev)}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </section>
+      ) : (
+        /* Grilla Mensual (8 cols) + Agenda del Día Seleccionado (4 cols) */
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <section
+            aria-label="Calendario mensual"
+            className="overflow-hidden rounded-2xl border border-[#DFDDD4] bg-white shadow-[0_2px_10px_rgba(17,19,24,0.04)] lg:col-span-8"
+          >
+            <div className="grid grid-cols-7 gap-1 border-b border-[#E7E5DC] bg-[#F7F7F3] px-4 py-2 text-center text-[11px] font-semibold uppercase tracking-wider text-[#686E7D] sm:px-5">
+              {WEEKDAY_HEADERS.map((day) => (
+                <div key={day} className="py-1">
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-1.5 p-3 sm:p-5">
+              {gridCells.map((cell) => {
+                const dayEvents = eventsByDate.get(cell.dateISO) ?? [];
+                const dayGoogleOnly = (googleByDate.get(cell.dateISO) ?? []).filter(
+                  (ge) => !ge.argenCajaKey
+                );
+                const isSelected = cell.dateISO === effectiveSelectedDateISO;
+                const isTodayRef = cell.dateISO === referenceDateISO;
 
                 return (
-                  <div key={ev.eventKey} className="py-3.5 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="space-y-1 min-w-0">
-                        <span
-                          className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${meta.pillClass}`}
-                        >
-                          <span className={`h-1.5 w-1.5 rounded-full ${meta.dotClass}`} />
-                          {meta.label}
-                        </span>
-                        <h3 className="text-sm font-bold text-[#111318]">
-                          {ev.title}
-                        </h3>
-                      </div>
-                      <span className="font-mono-tabular text-sm font-bold text-[#111318] shrink-0">
-                        {ev.kind === 'COBRO' ? '+' : ''}
-                        {MoneyUtils.formatARS(ev.amountARS)}
-                      </span>
-                    </div>
-
-                    <p className="text-xs leading-relaxed text-[#525866]">
-                      {ev.description}
-                    </p>
-
-                    {ev.shiftedFromWeekend && ev.originalDueISO && (
-                      <p className="text-[11px] font-medium text-[#B45309]">
-                        Adelantado al viernes hábil (vencía el{' '}
-                        {formatShortDateAR(ev.originalDueISO)}).
-                      </p>
-                    )}
-
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                      {hasWorkspaceToken &&
-                        (linkedGoogle ? (
-                          <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1D4ED8]">
-                              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                              En Google Calendar
-                            </span>
-                            {linkedGoogle.htmlLink && (
-                              <a
-                                href={linkedGoogle.htmlLink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-[11px] font-medium text-[#525866] hover:text-[#111318]"
-                              >
-                                Abrir
-                                <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                              </a>
-                            )}
-                            <button
-                              type="button"
-                              disabled={syncLoading}
-                              onClick={() =>
-                                setPendingMutation({
-                                  type: 'delete-google',
-                                  googleEvent: linkedGoogle,
-                                })
-                              }
-                              aria-label={`Quitar ${ev.title} de Google Calendar`}
-                              className="inline-flex items-center gap-1 rounded-md border border-[#FECACA] bg-[#FEF2F2] px-2 py-0.5 text-[11px] font-medium text-[#B91C1C] hover:bg-[#FEE2E2]"
-                            >
-                              <Trash2 className="h-3 w-3" aria-hidden="true" />
-                              Quitar
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={syncLoading}
-                            onClick={() =>
-                              setPendingMutation({
-                                type: 'create-single',
-                                event: ev,
-                              })
-                            }
-                            className="inline-flex items-center gap-1 rounded-lg bg-[#1D4ED8] px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-[#1E40AF]"
-                          >
-                            <CalendarCheck className="h-3 w-3" aria-hidden="true" />
-                            Agendar en Google Calendar
-                          </button>
-                        ))}
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleDownloadICS(
-                            [ev],
-                            `argencaja-${ev.dateISO}-${ev.kind.toLowerCase()}.ics`
-                          )
-                        }
-                        className="inline-flex items-center gap-1 rounded-lg border border-[#E4E3DD] bg-[#F6F6F3] px-2.5 py-1 text-[11px] font-medium text-[#111318] hover:bg-[#EEEDE8]"
+                  <button
+                    key={cell.dateISO}
+                    type="button"
+                    onClick={() => setSelectedDateISO(cell.dateISO)}
+                    aria-label={`Ver agenda del ${formatDateAR(cell.dateISO)}`}
+                    aria-pressed={isSelected}
+                    className={`flex min-h-[64px] flex-col items-start justify-between rounded-xl border p-1.5 text-left transition-all sm:min-h-[92px] sm:p-2 ${
+                      isSelected
+                        ? 'border-[#1D4ED8] bg-[#EFF6FF]/60 ring-1 ring-[#1D4ED8]'
+                        : cell.inCurrentMonth
+                          ? 'border-[#EEEDE8] bg-white hover:border-[#D4D2CA] hover:bg-[#FAF9F6]'
+                          : 'border-transparent bg-[#F6F6F3]/60 text-[#9CA3AF]'
+                    }`}
+                  >
+                    <div className="flex w-full items-center justify-between gap-1">
+                      <span
+                        className={`inline-flex h-5 w-5 items-center justify-center rounded-full font-mono-tabular text-[11px] font-semibold ${
+                          isTodayRef
+                            ? 'bg-[#1D4ED8] text-white'
+                            : cell.inCurrentMonth
+                              ? 'text-[#111318]'
+                              : 'text-[#9CA3AF]'
+                        }`}
                       >
-                        <Download className="h-3 w-3" aria-hidden="true" />
-                        .ics
-                      </button>
-
-                      {canEditFinances &&
-                        itemObj &&
-                        itemObj.estado === 'PENDIENTE' &&
-                        ev.kind === 'VENCIMIENTO' && (
-                          <button
-                            type="button"
-                            onClick={() => onMarkPaid(itemObj)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-1 text-[11px] font-semibold text-[#1D4ED8] hover:bg-[#DBEAFE]"
-                          >
-                            Marcar Pagado
-                          </button>
-                        )}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {selectedDayGoogleEvents.length > 0 && (
-                <div className="pt-3.5 space-y-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[#747A88]">
-                    Otros eventos de tu Google Calendar
-                  </p>
-                  {selectedDayGoogleEvents.map((ge) => (
-                    <div
-                      key={ge.id}
-                      className="flex items-center justify-between gap-2 rounded-lg border border-[#EEEDE8] bg-[#F6F6F3] px-3 py-2 text-xs"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-[#111318]">
-                          {ge.summary}
-                        </p>
-                        <p className="font-mono-tabular text-[11px] text-[#747A88]">
-                          {ge.isAllDay ? 'Todo el día' : ge.startTimeLabel ?? 'Horario'}
-                        </p>
-                      </div>
-                      {ge.htmlLink && (
-                        <a
-                          href={ge.htmlLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[11px] font-semibold text-[#1D4ED8] hover:underline shrink-0"
-                        >
-                          Ver
-                        </a>
+                        {cell.dayNumber}
+                      </span>
+                      {dayEvents.some((e) => googleByArgenKey.has(e.eventKey)) && (
+                        <CalendarCheck
+                          className="h-3 w-3 text-[#1D4ED8]"
+                          aria-label="Agendado en Google Calendar"
+                        />
                       )}
                     </div>
-                  ))}
+
+                    <div className="mt-1 w-full space-y-0.5">
+                      {dayEvents.slice(0, 2).map((ev) => {
+                        const meta = getKindMeta(ev.kind, ev.isUrgent, ev.isPaid);
+                        return (
+                          <div
+                            key={ev.eventKey}
+                            className="hidden sm:flex items-center gap-1 truncate rounded px-1 py-0.5 text-[10px] font-medium bg-[#F6F6F3] text-[#111318]"
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dotClass}`}
+                            />
+                            <span className="truncate">
+                              {ev.title.replace(/^(Vence:|Límite hábil:|Cobro:|Habilitada para pagar:|Última cuota.*?:\s*)/, '')}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {dayEvents.length > 2 && (
+                        <span className="hidden sm:block pl-1 font-mono-tabular text-[10px] font-semibold text-[#525866]">
+                          +{dayEvents.length - 2} más
+                        </span>
+                      )}
+                      {dayEvents.length > 0 && (
+                        <div className="flex sm:hidden flex-wrap gap-1 pt-1">
+                          {dayEvents.slice(0, 4).map((ev) => {
+                            const meta = getKindMeta(ev.kind, ev.isUrgent, ev.isPaid);
+                            return (
+                              <span
+                                key={ev.eventKey}
+                                className={`h-1.5 w-1.5 rounded-full ${meta.dotClass}`}
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
+                      {dayGoogleOnly.length > 0 && dayEvents.length === 0 && (
+                        <span className="hidden sm:block truncate pl-1 text-[10px] text-[#747A88]">
+                          {dayGoogleOnly[0].summary}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Panel de Detalle del Día Seleccionado (4 cols) */}
+          <aside
+            aria-label="Detalle del día seleccionado"
+            className="flex flex-col overflow-hidden rounded-2xl border border-[#DFDDD4] bg-white shadow-[0_2px_10px_rgba(17,19,24,0.04)] lg:col-span-4"
+          >
+            <div className="flex items-start justify-between gap-2 border-b border-[#DCE7FE] bg-[#F4F7FF] px-5 py-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#1D4ED8]">
+                  Agenda del día
+                </p>
+                <h2 className="mt-0.5 font-display text-lg font-bold text-[#111318]">
+                  {formatDateAR(effectiveSelectedDateISO)}
+                </h2>
+              </div>
+              {effectiveSelectedDateISO === referenceDateISO && (
+                <span className="rounded-md border border-[#BFDBFE] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#1D4ED8]">
+                  Hoy análisis
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-1 flex-col p-5">
+              {selectedDayEvents.length === 0 && selectedDayGoogleEvents.length === 0 ? (
+                <div className="my-auto flex flex-col items-center justify-center py-10 text-center">
+                  <CalendarClock
+                    className="h-7 w-7 text-[#9CA3AF]"
+                    aria-hidden="true"
+                  />
+                  <p className="mt-2.5 text-sm font-semibold text-[#111318]">
+                    Sin movimientos este día
+                  </p>
+                  <p className="mt-1 text-xs text-[#525866]">
+                    Elegí otro día marcado en el calendario para inspeccionar pagos, ventanas o cobros.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-1 divide-y divide-[#EEEDE8]">
+                  {selectedDayEvents.map((ev) => {
+                    const meta = getKindMeta(ev.kind, ev.isUrgent, ev.isPaid);
+                    return (
+                      <div key={ev.eventKey} className="py-3.5 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-1 min-w-0">
+                            <span
+                              className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${meta.pillClass}`}
+                            >
+                              <span className={`h-1.5 w-1.5 rounded-full ${meta.dotClass}`} />
+                              {meta.label}
+                            </span>
+                            <h3 className="text-sm font-bold text-[#111318]">
+                              {ev.title}
+                            </h3>
+                          </div>
+                          <span className="font-mono-tabular text-sm font-bold text-[#111318] shrink-0">
+                            {ev.kind === 'COBRO' ? '+' : ''}
+                            {MoneyUtils.formatARS(ev.amountARS)}
+                          </span>
+                        </div>
+
+                        <p className="text-xs leading-relaxed text-[#525866]">
+                          {ev.description}
+                        </p>
+
+                        {ev.shiftedFromWeekend && ev.originalDueISO && (
+                          <p className="text-[11px] font-medium text-[#B45309]">
+                            Adelantado al viernes hábil (vencía el{' '}
+                            {formatShortDateAR(ev.originalDueISO)}).
+                          </p>
+                        )}
+
+                        {renderEventActions(ev)}
+                      </div>
+                    );
+                  })}
+
+                  {selectedDayGoogleEvents.length > 0 && (
+                    <div className="pt-3.5 space-y-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-[#747A88]">
+                        Otros eventos de tu Google Calendar
+                      </p>
+                      {selectedDayGoogleEvents.map((ge) => (
+                        <div
+                          key={ge.id}
+                          className="flex items-center justify-between gap-2 rounded-lg border border-[#EEEDE8] bg-[#F6F6F3] px-3 py-2 text-xs"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-[#111318]">
+                              {ge.summary}
+                            </p>
+                            <p className="font-mono-tabular text-[11px] text-[#747A88]">
+                              {ge.isAllDay ? 'Todo el día' : ge.startTimeLabel ?? 'Horario'}
+                            </p>
+                          </div>
+                          {ge.htmlLink && (
+                            <a
+                              href={ge.htmlLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] font-semibold text-[#1D4ED8] hover:underline shrink-0"
+                            >
+                              Ver
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
-          </div>
-        </aside>
-      </div>
+          </aside>
+        </div>
+      )}
 
       {/* Confirmación explícita obligatoria antes de crear/borrar en Google Calendar */}
       {pendingMutation && (

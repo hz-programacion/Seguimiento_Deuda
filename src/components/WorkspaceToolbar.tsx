@@ -2,17 +2,20 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Calendar,
   CalendarPlus,
+  ChevronDown,
   Cloud,
   Database,
   FastForward,
   MoreHorizontal,
   RotateCcw,
+  SlidersHorizontal,
   Sparkles,
 } from 'lucide-react';
 import { PeriodoID } from '../types/finance';
 import {
   formatPeriodoLabel,
   formatPeriodoShort,
+  formatShortDateAR,
   getNextPeriodoId,
 } from '../utils/dateUtils';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -57,6 +60,7 @@ export const WorkspaceToolbar: React.FC<WorkspaceToolbarProps> = ({
   onResetSeed,
 }) => {
   const [moreOpen, setMoreOpen] = useState(false);
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
   const nextPeriodo = getNextPeriodoId(activePeriodo);
@@ -90,188 +94,230 @@ export const WorkspaceToolbar: React.FC<WorkspaceToolbarProps> = ({
       aria-label="Controles del período"
       className="border-b border-[#DFDDD4] bg-[#F7F7F3]"
     >
-      <div className="mx-auto flex max-w-[1400px] flex-col gap-2.5 px-4 py-2.5 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-        {/* Selector compacto de meses + siguiente mes */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div
-            role="group"
-            aria-label="Meses disponibles"
-            className="flex flex-wrap items-center gap-1 rounded-lg border border-[#E4E3DD] bg-white p-1"
-          >
-            {availablePeriodos.map((p) => {
-              const active = p === activePeriodo;
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => onSelectPeriodo(p)}
-                  className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8] ${
-                    active
-                      ? 'bg-[#1D4ED8] text-white'
-                      : 'text-[#525866] hover:bg-[#F6F6F3] hover:text-[#111318]'
-                  }`}
-                >
-                  {formatPeriodoShort(p)}
-                </button>
-              );
-            })}
+      <div className="mx-auto max-w-[1400px] px-4 py-2 sm:px-6 lg:px-8 lg:py-2.5">
+        {/* Resumen compacto en móvil/tablet (<lg) para ahorrar altura sobre el pliegue */}
+        <div className="flex items-center justify-between gap-2 lg:hidden">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="truncate font-display text-xs font-bold text-[#111318]">
+              {activeMonthLabel}
+            </span>
+            <span aria-hidden="true" className="text-[#C9C6BA]">
+              ·
+            </span>
+            <span className="font-mono-tabular text-[11px] text-[#525866] whitespace-nowrap">
+              Hoy {formatShortDateAR(referenceDateISO)}
+            </span>
           </div>
-
-          {canEditFinances && (
-            <button
-              type="button"
-              onClick={onAdvanceNextMonth}
-              aria-label="Avanzar al Mes Siguiente"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1.5 text-xs font-semibold text-[#1D4ED8] transition-colors hover:bg-[#DBEAFE] whitespace-nowrap shrink-0"
-            >
-              <CalendarPlus className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>
-                {nextPeriodoExists
-                  ? `Ir a ${formatPeriodoShort(nextPeriodo)}`
-                  : `Crear ${formatPeriodoShort(nextPeriodo)}`}
-              </span>
-            </button>
-          )}
-        </div>
-
-        {/* Controles derechos sin ruido: Fecha análisis + Workspace + Más */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-1.5 rounded-lg border border-[#E4E3DD] bg-white px-2.5 py-1.5 text-xs">
-            <Calendar
-              className="h-3.5 w-3.5 text-[#1D4ED8] shrink-0"
-              aria-hidden="true"
-            />
-            <label
-              htmlFor="ref-date-input"
-              className="text-[#525866] whitespace-nowrap"
-            >
-              Fecha hoy:
-            </label>
-            <input
-              id="ref-date-input"
-              type="date"
-              value={referenceDateISO}
-              onChange={(e) => {
-                if (e.target.value) onChangeReferenceDateISO(e.target.value);
-              }}
-              className="bg-transparent font-mono-tabular text-xs font-semibold text-[#111318] focus:outline-none"
-            />
-          </div>
-
-          {canToggleSac && canEditFinances && (
-            <button
-              type="button"
-              role="switch"
-              aria-checked={includeSac}
-              aria-label="Incluir Aguinaldo (SAC) Estimado (+$500.000,00)"
-              onClick={onToggleSac}
-              title={`Aguinaldo (SAC) en ${activeMonthLabel} (+$500.000,00)`}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-                includeSac
-                  ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]'
-                  : 'border-[#E4E3DD] bg-white text-[#525866] hover:text-[#111318]'
-              }`}
-            >
-              <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>SAC {includeSac ? 'Activo' : '+$500k'}</span>
-            </button>
-          )}
 
           <button
             type="button"
-            onClick={onOpenFirebaseConfig}
-            title={
-              anyCloudConnected
-                ? `Conectado (${driveUserEmail ?? cloudUserEmail ?? 'sesión activa'})`
-                : 'Respaldo JSON, Google Drive y Google Calendar'
-            }
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[#E4E3DD] bg-white px-2.5 py-1.5 text-xs font-medium text-[#111318] transition-colors hover:bg-[#EEEDE8] whitespace-nowrap shrink-0"
+            aria-expanded={mobileToolsOpen}
+            onClick={() => setMobileToolsOpen((v) => !v)}
+            className={`inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
+              mobileToolsOpen
+                ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]'
+                : 'border-[#E4E3DD] bg-white text-[#111318]'
+            }`}
           >
-            {anyCloudConnected ? (
-              <Cloud
-                className="h-3.5 w-3.5 text-[#1D4ED8]"
-                aria-hidden="true"
-              />
-            ) : (
-              <Database
-                className="h-3.5 w-3.5 text-[#525866]"
-                aria-hidden="true"
-              />
-            )}
-            <span>
-              {hasDriveToken ? 'Google Conectado' : 'Nube y Respaldo'}
-            </span>
+            <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>Período y Nube</span>
+            <ChevronDown
+              className={`h-3.5 w-3.5 transition-transform ${
+                mobileToolsOpen ? 'rotate-180' : ''
+              }`}
+              aria-hidden="true"
+            />
           </button>
+        </div>
 
-          <PWAInstallButton />
+        {/* Barra completa en escritorio (siempre visible en lg+) o desplegable en móvil */}
+        <div
+          className={`${
+            mobileToolsOpen ? 'mt-2.5 flex border-t border-[#E7E5DC] pt-2.5' : 'hidden'
+          } flex-col gap-2.5 lg:mt-0 lg:flex lg:flex-row lg:items-center lg:justify-between lg:border-t-0 lg:pt-0`}
+        >
+          {/* Selector compacto de meses + siguiente mes */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              role="group"
+              aria-label="Meses disponibles"
+              className="flex flex-wrap items-center gap-1 rounded-lg border border-[#E4E3DD] bg-white p-1"
+            >
+              {availablePeriodos.map((p) => {
+                const active = p === activePeriodo;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => onSelectPeriodo(p)}
+                    className={`rounded-md px-2.5 py-1 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8] ${
+                      active
+                        ? 'bg-[#1D4ED8] text-white'
+                        : 'text-[#525866] hover:bg-[#F6F6F3] hover:text-[#111318]'
+                    }`}
+                  >
+                    {formatPeriodoShort(p)}
+                  </button>
+                );
+              })}
+            </div>
 
-          {canEditFinances && (
-            <div ref={moreMenuRef} className="relative">
+            {canEditFinances && (
               <button
                 type="button"
-                aria-expanded={moreOpen}
-                aria-haspopup="menu"
-                aria-label="Más herramientas del período"
-                onClick={() => setMoreOpen((v) => !v)}
-                className="inline-flex items-center gap-1 rounded-lg border border-[#E4E3DD] bg-white px-2.5 py-1.5 text-xs font-medium text-[#525866] transition-colors hover:bg-[#EEEDE8] hover:text-[#111318] whitespace-nowrap shrink-0"
+                onClick={onAdvanceNextMonth}
+                aria-label="Avanzar al Mes Siguiente"
+                className="inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-1.5 text-xs font-semibold text-[#1D4ED8] transition-colors hover:bg-[#DBEAFE] whitespace-nowrap shrink-0"
               >
-                <MoreHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>Más</span>
+                <CalendarPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>
+                  {nextPeriodoExists
+                    ? `Ir a ${formatPeriodoShort(nextPeriodo)}`
+                    : `Crear ${formatPeriodoShort(nextPeriodo)}`}
+                </span>
               </button>
+            )}
+          </div>
 
-              {moreOpen && (
-                <div
-                  role="menu"
-                  className="absolute right-0 z-40 mt-1.5 w-60 rounded-xl border border-[#E4E3DD] bg-white p-1.5 shadow-lg"
-                >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setMoreOpen(false);
-                      onProjectSixMonths();
-                    }}
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-[#111318] hover:bg-[#F6F6F3]"
-                  >
-                    <FastForward
-                      className="h-3.5 w-3.5 text-[#1D4ED8]"
-                      aria-hidden="true"
-                    />
-                    <div>
-                      <span className="block font-semibold">
-                        Generar 6 meses
-                      </span>
-                      <span className="block text-[11px] text-[#747A88]">
-                        Proyecta cuotas y cierres
-                      </span>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    role="menuitem"
-                    aria-label="Restaurar datos semilla Diciembre 2026"
-                    onClick={() => {
-                      setMoreOpen(false);
-                      onResetSeed();
-                    }}
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-[#B91C1C] hover:bg-[#FEF2F2]"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-                    <div>
-                      <span className="block font-semibold">
-                        Restaurar base inicial
-                      </span>
-                      <span className="block text-[11px] text-[#747A88]">
-                        Volver a Diciembre 2026
-                      </span>
-                    </div>
-                  </button>
-                </div>
-              )}
+          {/* Controles derechos: Fecha análisis + SAC + Workspace + Más */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border border-[#E4E3DD] bg-white px-2.5 py-1 text-xs">
+              <Calendar
+                className="h-3.5 w-3.5 text-[#1D4ED8] shrink-0"
+                aria-hidden="true"
+              />
+              <label
+                htmlFor="ref-date-input"
+                className="text-[#525866] whitespace-nowrap"
+              >
+                Fecha hoy:
+              </label>
+              <input
+                id="ref-date-input"
+                type="date"
+                value={referenceDateISO}
+                onChange={(e) => {
+                  if (e.target.value) onChangeReferenceDateISO(e.target.value);
+                }}
+                className="bg-transparent font-mono-tabular text-xs font-semibold text-[#111318] focus:outline-none"
+              />
             </div>
-          )}
+
+            {canToggleSac && canEditFinances && (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={includeSac}
+                aria-label="Incluir Aguinaldo (SAC) Estimado (+$500.000,00)"
+                onClick={onToggleSac}
+                title={`Aguinaldo (SAC) en ${activeMonthLabel} (+$500.000,00)`}
+                className={`inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
+                  includeSac
+                    ? 'border-[#1D4ED8] bg-[#EFF6FF] text-[#1D4ED8]'
+                    : 'border-[#E4E3DD] bg-white text-[#525866] hover:text-[#111318]'
+                }`}
+              >
+                <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>SAC {includeSac ? 'Activo' : '+$500k'}</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onOpenFirebaseConfig}
+              title={
+                anyCloudConnected
+                  ? `Conectado (${driveUserEmail ?? cloudUserEmail ?? 'sesión activa'})`
+                  : 'Respaldo JSON, Google Drive y Google Calendar'
+              }
+              className="inline-flex min-h-[34px] items-center gap-1.5 rounded-lg border border-[#E4E3DD] bg-white px-2.5 py-1.5 text-xs font-medium text-[#111318] transition-colors hover:bg-[#EEEDE8] whitespace-nowrap shrink-0"
+            >
+              {anyCloudConnected ? (
+                <Cloud
+                  className="h-3.5 w-3.5 text-[#1D4ED8]"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Database
+                  className="h-3.5 w-3.5 text-[#525866]"
+                  aria-hidden="true"
+                />
+              )}
+              <span>
+                {hasDriveToken ? 'Google Conectado' : 'Nube y Respaldo'}
+              </span>
+            </button>
+
+            <PWAInstallButton />
+
+            {canEditFinances && (
+              <div ref={moreMenuRef} className="relative">
+                <button
+                  type="button"
+                  aria-expanded={moreOpen}
+                  aria-haspopup="menu"
+                  aria-label="Más herramientas del período"
+                  onClick={() => setMoreOpen((v) => !v)}
+                  className="inline-flex min-h-[34px] items-center gap-1 rounded-lg border border-[#E4E3DD] bg-white px-2.5 py-1.5 text-xs font-medium text-[#525866] transition-colors hover:bg-[#EEEDE8] hover:text-[#111318] whitespace-nowrap shrink-0"
+                >
+                  <MoreHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Más</span>
+                </button>
+
+                {moreOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 z-40 mt-1.5 w-60 rounded-xl border border-[#E4E3DD] bg-white p-1.5 shadow-lg"
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMoreOpen(false);
+                        onProjectSixMonths();
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-[#111318] hover:bg-[#F6F6F3]"
+                    >
+                      <FastForward
+                        className="h-3.5 w-3.5 text-[#1D4ED8]"
+                        aria-hidden="true"
+                      />
+                      <div>
+                        <span className="block font-semibold">
+                          Generar 6 meses
+                        </span>
+                        <span className="block text-[11px] text-[#747A88]">
+                          Proyecta cuotas y cierres
+                        </span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      role="menuitem"
+                      aria-label="Restaurar datos semilla Diciembre 2026"
+                      onClick={() => {
+                        setMoreOpen(false);
+                        onResetSeed();
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium text-[#B91C1C] hover:bg-[#FEF2F2]"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                      <div>
+                        <span className="block font-semibold">
+                          Restaurar base inicial
+                        </span>
+                        <span className="block text-[11px] text-[#747A88]">
+                          Volver a Diciembre 2026
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </section>

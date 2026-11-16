@@ -43,6 +43,7 @@ interface PaymentChecklistProps {
 type FilterMode =
   | 'TODOS'
   | 'PENDIENTES'
+  | 'SERVICIOS'
   | 'PAGADOS'
   | 'Q1'
   | 'Q2'
@@ -51,6 +52,7 @@ type FilterMode =
 const FILTER_TABS: Array<{ id: FilterMode; label: string }> = [
   { id: 'TODOS', label: 'Todos' },
   { id: 'PENDIENTES', label: 'Falta Pagar' },
+  { id: 'SERVICIOS', label: 'Servicios' },
   { id: 'PAGADOS', label: 'Pagados' },
   { id: 'Q1', label: '1° Quincena' },
   { id: 'Q2', label: '2° Quincena' },
@@ -113,6 +115,11 @@ export const PaymentChecklist: React.FC<PaymentChecklistProps> = ({
         if (filter === 'PENDIENTES') {
           return (
             isObligationCategory(item.categoria) && item.estado === 'PENDIENTE'
+          );
+        }
+        if (filter === 'SERVICIOS') {
+          return (
+            item.categoria === 'SERVICIO_HOGAR' && item.estado !== 'EXTINGUIDO'
           );
         }
         if (filter === 'PAGADOS') {
@@ -272,31 +279,31 @@ export const PaymentChecklist: React.FC<PaymentChecklistProps> = ({
       <div className="flex flex-col gap-3 border-b border-[#D8D6CC] pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#1D4ED8]">
-            Libro de Movimientos
+            Libro de Movimientos y Servicios
           </p>
           <h1 className="mt-0.5 font-display text-2xl font-bold tracking-tight text-[#111318] sm:text-3xl">
             Movimientos · {formatPeriodoLabel(matchResult.summary.periodo)}
           </h1>
           <p className="mt-1 text-xs text-[#525866] sm:text-sm">
-            Cada bloque separa claramente cuentas pendientes, ingresos, pagados y cuotas finalizadas.
+            Registro completo del mes separado en bloques operativos: pendientes, ingresos, pagados y cuotas finalizadas.
           </p>
         </div>
 
-        {/* Mini resumen numérico de la vista filtrada */}
-        <div className="flex flex-wrap items-center gap-3 font-mono-tabular text-xs">
-          <div className="rounded-xl border border-[#DFDDD4] bg-white px-3.5 py-2 shadow-[0_1px_2px_rgba(17,19,24,0.03)]">
+        {/* Mini resumen numérico */}
+        <div className="flex flex-wrap items-center gap-2 font-mono-tabular text-xs sm:gap-3">
+          <div className="rounded-xl border border-[#DFDDD4] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(17,19,24,0.03)]">
             <span className="font-sans text-[#686E7D]">Por pagar: </span>
             <span className="font-bold text-[#B45309]">
               {MoneyUtils.formatARSCents(summaryTotals.pendingCents)}
             </span>
           </div>
-          <div className="rounded-xl border border-[#DFDDD4] bg-white px-3.5 py-2 shadow-[0_1px_2px_rgba(17,19,24,0.03)]">
+          <div className="rounded-xl border border-[#DFDDD4] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(17,19,24,0.03)]">
             <span className="font-sans text-[#686E7D]">Ingresos: </span>
             <span className="font-bold text-[#1D4ED8]">
               {MoneyUtils.formatARSCents(summaryTotals.incomeCents)}
             </span>
           </div>
-          <div className="rounded-xl border border-[#DFDDD4] bg-white px-3.5 py-2 shadow-[0_1px_2px_rgba(17,19,24,0.03)]">
+          <div className="rounded-xl border border-[#DFDDD4] bg-white px-3 py-2 shadow-[0_1px_2px_rgba(17,19,24,0.03)]">
             <span className="font-sans text-[#686E7D]">Pagado: </span>
             <span className="font-bold text-[#111318]">
               {MoneyUtils.formatARSCents(summaryTotals.paidCents)}
@@ -321,7 +328,7 @@ export const PaymentChecklist: React.FC<PaymentChecklistProps> = ({
                 role="tab"
                 aria-selected={active}
                 onClick={() => setFilter(tab.id)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
+                className={`min-h-[34px] rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
                   active
                     ? 'bg-[#1D4ED8] text-white'
                     : 'text-[#525866] hover:bg-[#F7F7F3] hover:text-[#111318]'
@@ -347,7 +354,7 @@ export const PaymentChecklist: React.FC<PaymentChecklistProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar concepto o bolsillo..."
-            className="w-full rounded-xl border border-[#DFDDD4] bg-white py-2 pl-9 pr-3 text-sm text-[#111318] placeholder:text-[#747A88] shadow-[0_1px_2px_rgba(17,19,24,0.03)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8]"
+            className="min-h-[40px] w-full rounded-xl border border-[#DFDDD4] bg-white py-2 pl-9 pr-3 text-sm text-[#111318] placeholder:text-[#747A88] shadow-[0_1px_2px_rgba(17,19,24,0.03)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1D4ED8]"
           />
         </div>
       </div>
@@ -364,7 +371,7 @@ export const PaymentChecklist: React.FC<PaymentChecklistProps> = ({
               setFilter('TODOS');
               setQuery('');
             }}
-            className="mt-3 rounded-lg border border-[#DFDDD4] bg-[#F7F7F3] px-3.5 py-1.5 text-xs font-semibold text-[#111318] hover:bg-[#ECEAE2]"
+            className="mt-3 min-h-[36px] rounded-lg border border-[#DFDDD4] bg-[#F7F7F3] px-3.5 py-1.5 text-xs font-semibold text-[#111318] hover:bg-[#ECEAE2]"
           >
             Limpiar filtros
           </button>
@@ -406,7 +413,213 @@ export const PaymentChecklist: React.FC<PaymentChecklistProps> = ({
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
+              {/* Vista Móvil (<md): Tarjetas apiladas sin desplazamiento horizontal */}
+              <div className="divide-y divide-[#ECEAE2] md:hidden">
+                {group.items.map((item) => {
+                  const isIncome = isIncomeCategory(item.categoria);
+                  const isCard =
+                    item.categoria === 'TARJETA_ROTATIVA' ||
+                    item.subgrupo?.toLowerCase().includes('tarjeta');
+                  const pInfo = priorityMap.get(item.id);
+                  const displayAmount =
+                    item.estado === 'EXTINGUIDO'
+                      ? item.montoLiberadoAlExtinguirse ?? item.montoPactado
+                      : item.estado === 'PAGADO' &&
+                          item.montoPagado !== undefined
+                        ? item.montoPagado
+                        : item.montoPactado;
+
+                  return (
+                    <div key={item.id} className="space-y-3 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-display text-sm font-bold text-[#111318]">
+                            {item.titulo}
+                            {item.esCuotaFija &&
+                            item.cuotaActual &&
+                            item.cuotasTotales ? (
+                              <span className="ml-1.5 font-mono-tabular text-xs font-semibold text-[#4338CA]">
+                                {item.cuotaActual}/{item.cuotasTotales}
+                              </span>
+                            ) : null}
+                          </p>
+                          <p className="mt-0.5 text-xs text-[#525866]">
+                            {item.subgrupo ?? item.categoria}
+                            {pInfo ? (
+                              <>
+                                {' · '}
+                                <span className={`font-semibold ${pInfo.color}`}>
+                                  {pInfo.label}
+                                </span>
+                              </>
+                            ) : null}
+                          </p>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          {item.estado === 'EXTINGUIDO' ? (
+                            <span className="font-mono-tabular text-sm font-bold text-[#4338CA]">
+                              {MoneyUtils.formatARS(displayAmount)}
+                            </span>
+                          ) : (
+                            <InlineAmountEditor
+                              itemTitle={item.titulo}
+                              amount={displayAmount}
+                              prefix={isIncome ? '+' : ''}
+                              readOnly={!canEditFinances}
+                              textClassName={`text-sm font-bold ${
+                                isIncome ? 'text-[#1D4ED8]' : 'text-[#111318]'
+                              }`}
+                              onSaveAmount={(val) =>
+                                onQuickUpdateAmount(item, val)
+                              }
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#525866]">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {item.estado === 'EXTINGUIDO' ? (
+                            <span className="font-mono-tabular">
+                              {formatDateAR(item.fechaExactaVencimiento)}
+                            </span>
+                          ) : (
+                            <>
+                              <InlineDateEditor
+                                itemTitle={item.titulo}
+                                label={isIncome ? 'Cobro' : 'Vence'}
+                                dateISO={item.fechaExactaVencimiento}
+                                readOnly={!canEditFinances}
+                                onSaveDate={(val) =>
+                                  onQuickUpdateDates(item, {
+                                    fechaExactaVencimiento: val,
+                                  })
+                                }
+                              />
+                              {(item.fechaCierre || isCard) && (
+                                <InlineDateEditor
+                                  itemTitle={item.titulo}
+                                  label="Cierre"
+                                  dateISO={item.fechaCierre}
+                                  placeholder="+ Cierre"
+                                  readOnly={!canEditFinances}
+                                  onSaveDate={(val) =>
+                                    onQuickUpdateDates(item, {
+                                      fechaCierre: val,
+                                    })
+                                  }
+                                />
+                              )}
+                            </>
+                          )}
+                        </div>
+
+                        <span className="text-[11px] font-medium text-[#747A88]">
+                          {item.ventanaAsignada === 'Q1_DIAS_1_AL_14'
+                            ? '1°Q'
+                            : '2°Q'}{' '}
+                          · {item.bolsilloResponsable}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#F2F1EB] pt-2.5">
+                        <span className="text-[11px] font-bold">
+                          {item.estado === 'PAGADO' ? (
+                            <span className="text-[#1D4ED8]">
+                              PAGADO
+                              {item.fechaPagoReal
+                                ? ` (${formatDateAR(item.fechaPagoReal)})`
+                                : ''}
+                            </span>
+                          ) : item.estado === 'EXTINGUIDO' ? (
+                            <span className="text-[#4338CA]">EXTINGUIDO</span>
+                          ) : (
+                            <span className="text-[#B45309]">PENDIENTE</span>
+                          )}
+                        </span>
+
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {canEditFinances && item.estado === 'PENDIENTE' && (
+                            <button
+                              type="button"
+                              onClick={() => onMarkPaid(item)}
+                              aria-label={`Marcar pagado ${item.titulo}`}
+                              className="inline-flex min-h-[36px] items-center gap-1 rounded-lg bg-[#1D4ED8] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#1E40AF]"
+                            >
+                              <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                              {isIncome ? 'Cobrado' : 'Pagar'}
+                            </button>
+                          )}
+
+                          {canEditFinances && item.estado === 'PAGADO' && (
+                            <button
+                              type="button"
+                              onClick={() => onUndoPaid(item)}
+                              aria-label={`Revertir pago ${item.titulo}`}
+                              className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-[#DFDDD4] bg-[#F7F7F3] px-2.5 py-1.5 text-xs font-medium text-[#111318]"
+                            >
+                              <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />
+                              Pendiente
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => onOpenReceipts(item)}
+                            aria-label={`Comprobantes de ${item.titulo}`}
+                            className={`inline-flex min-h-[36px] min-w-[36px] items-center justify-center gap-1 rounded-lg border px-2 text-xs ${
+                              (item.adjuntos?.length ?? 0) > 0
+                                ? 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]'
+                                : 'border-[#DFDDD4] bg-[#F7F7F3] text-[#525866]'
+                            }`}
+                          >
+                            <Paperclip
+                              className="h-3.5 w-3.5"
+                              aria-hidden="true"
+                            />
+                            {(item.adjuntos?.length ?? 0) > 0 && (
+                              <span className="font-mono-tabular font-semibold">
+                                {item.adjuntos!.length}
+                              </span>
+                            )}
+                          </button>
+
+                          {canEditFinances && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => onEditItem(item)}
+                                aria-label={`Editar ${item.titulo}`}
+                                className="inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-[#DFDDD4] bg-[#F7F7F3] text-[#525866]"
+                              >
+                                <Pencil
+                                  className="h-3.5 w-3.5"
+                                  aria-hidden="true"
+                                />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onDeleteItem(item)}
+                                aria-label={`Eliminar ${item.titulo}`}
+                                className="inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-lg border border-[#DFDDD4] bg-[#F7F7F3] text-[#525866] hover:border-[#FECACA] hover:bg-[#FEF2F2] hover:text-[#DC2626]"
+                              >
+                                <Trash2
+                                  className="h-3.5 w-3.5"
+                                  aria-hidden="true"
+                                />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Vista Escritorio (md+): Tabla limpia y tabular */}
+              <div className="hidden overflow-x-auto md:block">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b border-[#ECEAE2] bg-[#FAF9F6] text-[11px] font-semibold uppercase tracking-wider text-[#686E7D]">

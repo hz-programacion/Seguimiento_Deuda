@@ -243,8 +243,9 @@ export interface GoogleCalendarEventItem {
 
 export type AppTab =
   | 'tablero'
-  | 'calendario'
   | 'checklist'
   | 'quincenas'
-  | 'extincion';
+  | 'tarjetas'
+  | 'extincion'
+  | 'calendario';
 
