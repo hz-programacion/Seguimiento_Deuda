@@ -1,6 +1,8 @@
 import {
   BankingPaymentStatus,
   CashFlowMatchResult,
+  FoodBudgetStatus,
+  FoodExpense,
   ItemFinanciero,
   MatchedAllocation,
   MonthSummary,
@@ -11,11 +13,24 @@ import {
 } from '../types/finance';
 import {
   addDaysISO,
+  daysInMonth,
   diffDaysISO,
   formatShortDateAR,
   getLastBusinessDayOnOrBefore,
+  parsePeriodo,
 } from './dateUtils';
 import { MoneyUtils } from './moneyUtils';
+
+export function getEffectiveItemAmountARS(item: ItemFinanciero): number {
+  if (item.estado === 'PAGADO' && item.montoPagado !== undefined) {
+    return item.montoPagado;
+  }
+  return item.montoPactado;
+}
+
+export function getEffectiveItemAmountCents(item: ItemFinanciero): number {
+  return MoneyUtils.toCents(getEffectiveItemAmountARS(item));
+}
 
 export function isIncomeCategory(cat: ItemFinanciero['categoria']): boolean {
   return cat === 'INGRESO_HABITUAL' || cat === 'INGRESO_EXTRA_SAC';
@@ -53,6 +68,8 @@ export function computeMonthSummary(
   let totalPendienteCents = 0;
   let alivioMensualGanadoCents = 0;
   let itemsExtinguidosCount = 0;
+  let desvioObligacionesCents = 0;
+  let desvioIngresosCents = 0;
 
   for (const item of periodItems) {
     if (item.estado === 'EXTINGUIDO') {
@@ -64,13 +81,20 @@ export function computeMonthSummary(
     }
 
     const pactadoCents = MoneyUtils.toCents(item.montoPactado);
+    const effectiveCents = getEffectiveItemAmountCents(item);
 
     if (item.categoria === 'INGRESO_HABITUAL') {
-      ingresosHabitualesCents += pactadoCents;
+      ingresosHabitualesCents += effectiveCents;
+      if (item.estado === 'PAGADO') {
+        desvioIngresosCents += effectiveCents - pactadoCents;
+      }
       continue;
     }
     if (item.categoria === 'INGRESO_EXTRA_SAC') {
-      ingresosSacCents += pactadoCents;
+      ingresosSacCents += effectiveCents;
+      if (item.estado === 'PAGADO') {
+        desvioIngresosCents += effectiveCents - pactadoCents;
+      }
       continue;
     }
 
@@ -79,19 +103,18 @@ export function computeMonthSummary(
     }
 
     if (item.categoria === 'SERVICIO_HOGAR') {
-      serviciosHogarCents += pactadoCents;
+      serviciosHogarCents += effectiveCents;
     } else if (isTarjetaGrupo(item)) {
-      tarjetasTotalesCents += pactadoCents;
+      tarjetasTotalesCents += effectiveCents;
     } else if (item.categoria === 'CUOTA_FIJA') {
-      cuotasFijasCents += pactadoCents;
+      cuotasFijasCents += effectiveCents;
     }
 
     if (item.estado === 'PAGADO') {
-      const pagadoReal =
-        item.montoPagado !== undefined ? item.montoPagado : item.montoPactado;
-      totalPagadoCents += MoneyUtils.toCents(pagadoReal);
+      totalPagadoCents += effectiveCents;
+      desvioObligacionesCents += effectiveCents - pactadoCents;
     } else {
-      totalPendienteCents += pactadoCents;
+      totalPendienteCents += effectiveCents;
     }
   }
 
@@ -122,6 +145,8 @@ export function computeMonthSummary(
     porcentajeAvance,
     alivioMensualGanadoCents,
     itemsExtinguidosCount,
+    desvioObligacionesCents,
+    desvioIngresosCents,
   };
 }
 
@@ -320,14 +345,14 @@ function matchWindowAllocations(
       return a.ob.diaVencimientoOCobro - b.ob.diaVencimientoOCobro;
     });
 
-  // Pool de bolsillos brutos disponibles en la quincena
+  // Pool de bolsillos brutos disponibles en la quincena (usando monto real cobrado si ya ingresó)
   const pockets = incomes
     .slice()
     .sort((a, b) => a.diaVencimientoOCobro - b.diaVencimientoOCobro)
     .map((inc) => ({
       titulo: inc.titulo,
       bolsillo: inc.bolsilloResponsable,
-      remainingCents: MoneyUtils.toCents(inc.montoPactado),
+      remainingCents: getEffectiveItemAmountCents(inc),
     }));
 
   if (carryoverCents > 0) {
@@ -347,12 +372,11 @@ function matchWindowAllocations(
   let obligacionesPendientesCents = 0;
 
   for (const { ob } of enriched) {
+    const effectiveCents = getEffectiveItemAmountCents(ob);
     if (ob.estado === 'PAGADO') {
-      obligacionesPagadasCents += MoneyUtils.toCents(
-        ob.montoPagado !== undefined ? ob.montoPagado : ob.montoPactado
-      );
+      obligacionesPagadasCents += effectiveCents;
     } else {
-      obligacionesPendientesCents += MoneyUtils.toCents(ob.montoPactado);
+      obligacionesPendientesCents += effectiveCents;
     }
   }
 
@@ -382,7 +406,7 @@ function matchWindowAllocations(
   const asignaciones: MatchedAllocation[] = [];
 
   for (const { ob, pInfo, banking } of enriched) {
-    const neededCents = MoneyUtils.toCents(ob.montoPactado);
+    const neededCents = getEffectiveItemAmountCents(ob);
 
     if (ob.estado === 'PAGADO') {
       asignaciones.push({
@@ -399,9 +423,7 @@ function matchWindowAllocations(
           {
             titulo: 'Pagado',
             bolsillo: ob.bolsilloResponsable,
-            montoAsignadoCents: MoneyUtils.toCents(
-              ob.montoPagado ?? ob.montoPactado
-            ),
+            montoAsignadoCents: neededCents,
           },
         ],
         cubiertoCents: neededCents,
@@ -564,10 +586,10 @@ export function runCashFlowMatcher(
   );
 
   const q1IngresosCents = MoneyUtils.sumCents(
-    q1Incomes.map((i) => MoneyUtils.toCents(i.montoPactado))
+    q1Incomes.map((i) => getEffectiveItemAmountCents(i))
   );
   const q1ObligacionesCents = MoneyUtils.sumCents(
-    q1Obligations.map((i) => MoneyUtils.toCents(i.montoPactado))
+    q1Obligations.map((i) => getEffectiveItemAmountCents(i))
   );
 
   // Reserva razonable para comida: mitad exacta del mínimo mensual configurado en Q1
@@ -622,11 +644,11 @@ export function runCashFlowMatcher(
   // por lo que la reserva total a proteger hasta fin de mes es el mínimo mensual completo).
   const q1RemanenteParaQ2Cents = Math.max(0, q1SaldoLibrePostPagosCents);
   const q2IngresosCents = MoneyUtils.sumCents(
-    q2Incomes.map((i) => MoneyUtils.toCents(i.montoPactado))
+    q2Incomes.map((i) => getEffectiveItemAmountCents(i))
   );
   const q2DisponibleTotalCents = q2IngresosCents + q1RemanenteParaQ2Cents;
   const q2ObligacionesCents = MoneyUtils.sumCents(
-    q2Obligations.map((i) => MoneyUtils.toCents(i.montoPactado))
+    q2Obligations.map((i) => getEffectiveItemAmountCents(i))
   );
   const reservaComidaQ2TotalCents = safeMinFoodCents;
 
@@ -869,6 +891,63 @@ export function computeCashflowWaterfall(
     reservaComidaProtegidaCents,
     excedenteRealCents,
     deficitCents,
+  };
+}
+
+/**
+ * Calcula cuánto se consumió de la reserva de comida en el período
+ * y el presupuesto diario sugerido hasta el cierre del mes.
+ */
+export function computeFoodBudgetStatus(
+  periodo: PeriodoID,
+  expenses: FoodExpense[],
+  disponibleComidaRealCents: number,
+  minimoComidaCents: number,
+  referenceDateISO?: string
+): FoodBudgetStatus {
+  const periodExpenses = expenses.filter((e) => e.periodo === periodo);
+  const gastadoMesCents = MoneyUtils.sumCents(
+    periodExpenses.map((e) => MoneyUtils.toCents(e.monto))
+  );
+
+  const safeMinCents = Math.max(0, minimoComidaCents);
+  const restanteSobreMinimoCents = safeMinCents - gastadoMesCents;
+  const restanteSobreDisponibleRealCents =
+    disponibleComidaRealCents - gastadoMesCents;
+
+  const { year, month } = parsePeriodo(periodo);
+  const totalDays = daysInMonth(year, month);
+  let diasRestantesMes = totalDays;
+  if (referenceDateISO && /^\d{4}-\d{2}-\d{2}$/.test(referenceDateISO)) {
+    const refPeriodo = referenceDateISO.slice(0, 7);
+    if (refPeriodo === periodo) {
+      const refDay = Number(referenceDateISO.slice(8, 10));
+      diasRestantesMes = Math.max(1, totalDays - refDay + 1);
+    } else if (refPeriodo > periodo) {
+      diasRestantesMes = 1;
+    }
+  }
+
+  const presupuestoDiarioSugeridoCents = Math.max(
+    0,
+    Math.round(restanteSobreMinimoCents / diasRestantesMes)
+  );
+
+  return {
+    periodo,
+    gastadoMesCents,
+    cantidadCompras: periodExpenses.length,
+    minimoComidaCents: safeMinCents,
+    disponibleComidaRealCents,
+    restanteSobreMinimoCents,
+    restanteSobreDisponibleRealCents,
+    porcentajeConsumidoMinimo: MoneyUtils.percent(
+      gastadoMesCents,
+      Math.max(1, safeMinCents)
+    ),
+    diasRestantesMes,
+    presupuestoDiarioSugeridoCents,
+    excedeMinimo: gastadoMesCents > safeMinCents,
   };
 }
 

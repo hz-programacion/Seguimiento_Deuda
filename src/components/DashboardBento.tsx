@@ -11,8 +11,10 @@ import {
   Layers,
   Paperclip,
   Pencil,
+  Plus,
   Receipt,
   ShieldCheck,
+  ShoppingBasket,
   TrendingDown,
   Wallet,
 } from 'lucide-react';
@@ -20,6 +22,7 @@ import {
   AppTab,
   BankingPaymentStatus,
   CashFlowMatchResult,
+  FoodBudgetStatus,
   ItemFinanciero,
   PrioridadPago,
 } from '../types/finance';
@@ -28,6 +31,7 @@ import {
   formatPeriodoLabel,
   formatShortDateAR,
 } from '../utils/dateUtils';
+import { NextMonthProjection } from '../utils/monthTransition';
 import { MoneyUtils } from '../utils/moneyUtils';
 import {
   computeCashflowWaterfall,
@@ -39,6 +43,8 @@ import { InlineDateEditor } from './InlineDateEditor';
 interface DashboardBentoProps {
   matchResult: CashFlowMatchResult;
   periodItems: ItemFinanciero[];
+  foodBudgetStatus: FoodBudgetStatus;
+  nextMonthProjection: NextMonthProjection;
   canEditFinances: boolean;
   minFoodReserveARS?: number;
   onMarkPaid: (item: ItemFinanciero) => void;
@@ -49,6 +55,12 @@ interface DashboardBentoProps {
     updates: { fechaExactaVencimiento?: string; fechaCierre?: string }
   ) => void;
   onOpenReceipts: (item: ItemFinanciero) => void;
+  onAddFoodExpense: (input: {
+    concepto: string;
+    comercio?: string;
+    monto: number;
+    fechaISO: string;
+  }) => Promise<void> | void;
   onNavigateTab: (tab: AppTab) => void;
 }
 
@@ -122,6 +134,8 @@ const ChapterDivider: React.FC<{
 export const DashboardBento: React.FC<DashboardBentoProps> = ({
   matchResult,
   periodItems,
+  foodBudgetStatus,
+  nextMonthProjection,
   canEditFinances,
   minFoodReserveARS = 900000,
   onMarkPaid,
@@ -129,9 +143,16 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
   onQuickUpdateAmount,
   onQuickUpdateDates,
   onOpenReceipts,
+  onAddFoodExpense,
   onNavigateTab,
 }) => {
   const [showAllQueue, setShowAllQueue] = useState(false);
+  const [quickFoodOpen, setQuickFoodOpen] = useState(false);
+  const [quickConcepto, setQuickConcepto] = useState('');
+  const [quickMontoStr, setQuickMontoStr] = useState('');
+  const [quickComercio, setQuickComercio] = useState('');
+  const [quickFoodError, setQuickFoodError] = useState<string | null>(null);
+  const [savingQuickFood, setSavingQuickFood] = useState(false);
 
   const {
     referenceDateISO,
@@ -333,6 +354,168 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
                     </>
                   )}
                 </p>
+
+                {(summary.desvioObligacionesCents !== 0 ||
+                  summary.desvioIngresosCents !== 0) && (
+                  <p className="mt-2 rounded-lg border border-[#DCE7FE] bg-white/80 px-2.5 py-1.5 font-mono-tabular text-[11px] text-[#4338CA]">
+                    Desvío real vs pactado:{' '}
+                    {summary.desvioObligacionesCents !== 0 &&
+                      `Gastos ${summary.desvioObligacionesCents > 0 ? '+' : ''}${MoneyUtils.formatCompactCents(summary.desvioObligacionesCents)}`}
+                    {summary.desvioObligacionesCents !== 0 &&
+                      summary.desvioIngresosCents !== 0 &&
+                      ' · '}
+                    {summary.desvioIngresosCents !== 0 &&
+                      `Ingresos ${summary.desvioIngresosCents > 0 ? '+' : ''}${MoneyUtils.formatCompactCents(summary.desvioIngresosCents)}`}
+                  </p>
+                )}
+
+                {/* Seguimiento real de compras de comida del mes */}
+                <div className="mt-4 rounded-xl border border-[#DCE7FE] bg-white/90 p-3 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-[#111318]">
+                      <ShoppingBasket className="h-3.5 w-3.5 text-[#1D4ED8]" aria-hidden="true" />
+                      Súper y comida real
+                    </span>
+                    <span
+                      className={`font-mono-tabular text-[11px] font-bold ${
+                        foodBudgetStatus.excedeMinimo ? 'text-[#DC2626]' : 'text-[#1D4ED8]'
+                      }`}
+                    >
+                      Gastado {MoneyUtils.formatCompactCents(foodBudgetStatus.gastadoMesCents)} ·{' '}
+                      {foodBudgetStatus.porcentajeConsumidoMinimo.toFixed(0)}%
+                    </span>
+                  </div>
+
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[#ECEAE2]">
+                    <div
+                      style={{
+                        width: `${Math.min(100, Math.round(foodBudgetStatus.porcentajeConsumidoMinimo))}%`,
+                      }}
+                      className={`h-full ${
+                        foodBudgetStatus.excedeMinimo
+                          ? 'bg-[#DC2626]'
+                          : foodBudgetStatus.porcentajeConsumidoMinimo >= 85
+                            ? 'bg-[#D97706]'
+                            : 'bg-[#1D4ED8]'
+                      }`}
+                    />
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#525866]">
+                    <span className="font-mono-tabular">
+                      Quedan{' '}
+                      <strong className="text-[#111318]">
+                        {MoneyUtils.formatCompactCents(
+                          foodBudgetStatus.restanteSobreMinimoCents
+                        )}
+                      </strong>{' '}
+                      ({MoneyUtils.formatCompactCents(foodBudgetStatus.presupuestoDiarioSugeridoCents)}/día)
+                    </span>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuickFoodOpen((v) => !v);
+                          setQuickFoodError(null);
+                        }}
+                        className="inline-flex min-h-[28px] items-center gap-1 rounded-lg bg-[#1D4ED8] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#1E40AF]"
+                      >
+                        <Plus className="h-3 w-3" aria-hidden="true" />
+                        <span>{quickFoodOpen ? 'Cerrar' : 'Anotar compra'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onNavigateTab('quincenas')}
+                        className="font-semibold text-[#1D4ED8] hover:underline"
+                      >
+                        Ver detalle
+                      </button>
+                    </div>
+                  </div>
+
+                  {quickFoodOpen && (
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        setQuickFoodError(null);
+                        const parsed = MoneyUtils.parseARSInput(quickMontoStr);
+                        if (!quickConcepto.trim()) {
+                          setQuickFoodError('Ingresá qué compraste.');
+                          return;
+                        }
+                        if (!Number.isFinite(parsed) || parsed <= 0) {
+                          setQuickFoodError('Ingresá un monto mayor a $0.');
+                          return;
+                        }
+                        setSavingQuickFood(true);
+                        try {
+                          await onAddFoodExpense({
+                            concepto: quickConcepto.trim(),
+                            comercio: quickComercio.trim() || undefined,
+                            monto: parsed,
+                            fechaISO: referenceDateISO,
+                          });
+                          setQuickConcepto('');
+                          setQuickMontoStr('');
+                          setQuickComercio('');
+                          setQuickFoodOpen(false);
+                        } catch (err) {
+                          setQuickFoodError(
+                            err instanceof Error
+                              ? err.message
+                              : 'No se pudo guardar.'
+                          );
+                        } finally {
+                          setSavingQuickFood(false);
+                        }
+                      }}
+                      className="mt-2.5 space-y-2 border-t border-[#ECEAE2] pt-2.5"
+                    >
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <input
+                          type="text"
+                          value={quickConcepto}
+                          onChange={(e) => setQuickConcepto(e.target.value)}
+                          placeholder="Ej: Súper semanal"
+                          aria-label="Concepto de compra de comida"
+                          className="rounded-lg border border-[#D8D6CC] bg-white px-2.5 py-1.5 text-xs text-[#111318] focus:border-[#1D4ED8] focus:outline-none sm:col-span-2"
+                        />
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={quickMontoStr}
+                          onChange={(e) => setQuickMontoStr(e.target.value)}
+                          placeholder="Monto $"
+                          aria-label="Monto de compra de comida"
+                          className="rounded-lg border border-[#D8D6CC] bg-white px-2.5 py-1.5 font-mono-tabular text-xs font-semibold text-[#111318] focus:border-[#1D4ED8] focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={quickComercio}
+                          onChange={(e) => setQuickComercio(e.target.value)}
+                          placeholder="Comercio (opcional)"
+                          aria-label="Comercio de compra de comida"
+                          className="min-w-0 flex-1 rounded-lg border border-[#D8D6CC] bg-white px-2.5 py-1.5 text-xs text-[#111318] focus:border-[#1D4ED8] focus:outline-none"
+                        />
+                        <button
+                          type="submit"
+                          disabled={savingQuickFood}
+                          className="inline-flex min-h-[30px] items-center rounded-lg bg-[#111318] px-3 py-1 text-xs font-semibold text-white hover:bg-[#1D4ED8] disabled:opacity-60"
+                        >
+                          {savingQuickFood ? 'Guardando...' : 'Guardar'}
+                        </button>
+                      </div>
+                      {quickFoodError && (
+                        <p className="text-[11px] font-semibold text-[#DC2626]">
+                          {quickFoodError}
+                        </p>
+                      )}
+                    </form>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -530,6 +713,42 @@ export const DashboardBento: React.FC<DashboardBentoProps> = ({
             </div>
           )}
         </section>
+
+        {/* Trayectoria al mes siguiente (proyección no destructiva) */}
+        <div className="flex flex-col gap-2 rounded-2xl border border-[#DFDDD4] bg-white px-5 py-3.5 text-xs shadow-[0_1px_4px_rgba(17,19,24,0.03)] sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="font-mono-tabular text-[11px] font-bold uppercase tracking-wider text-[#4338CA]">
+              Trayectoria {formatPeriodoLabel(nextMonthProjection.nextPeriodo)}
+            </span>
+            <span className="text-[#525866]">
+              Obligaciones estimadas:{' '}
+              <strong className="font-mono-tabular text-[#111318]">
+                {MoneyUtils.formatARSCents(
+                  nextMonthProjection.nextSummary.obligacionesFijasTotalesCents
+                )}
+              </strong>
+              {nextMonthProjection.deltaObligacionesCents < 0 && (
+                <span className="ml-1.5 font-mono-tabular font-bold text-[#1D4ED8]">
+                  (-{MoneyUtils.formatCompactCents(-nextMonthProjection.deltaObligacionesCents)} menos que este mes)
+                </span>
+              )}
+              {nextMonthProjection.extinguishingItems.length > 0 && (
+                <span className="ml-1.5 text-[#4338CA]">
+                  · Terminan:{' '}
+                  {nextMonthProjection.extinguishingItems.map((c) => c.titulo).join(', ')}
+                </span>
+              )}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigateTab('extincion')}
+            className="inline-flex items-center gap-1 self-start font-semibold text-[#4338CA] hover:underline sm:self-auto whitespace-nowrap"
+          >
+            <span>Ver trayectoria</span>
+            <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        </div>
 
         {/* Resumen compacto de Alivio Ganado cuando existen cuotas extinguidas */}
         {extinguishedItems.length > 0 && (

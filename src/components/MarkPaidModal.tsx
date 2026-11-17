@@ -7,6 +7,7 @@ import { MoneyUtils } from '../utils/moneyUtils';
 interface MarkPaidModalProps {
   item: ItemFinanciero;
   hasDriveToken: boolean;
+  onSignInDrive?: () => Promise<void>;
   onClose: () => void;
   onConfirm: (payload: {
     item: ItemFinanciero;
@@ -31,6 +32,7 @@ const BOLSILLOS_COMUNES = [
 export const MarkPaidModal: React.FC<MarkPaidModalProps> = ({
   item,
   hasDriveToken,
+  onSignInDrive,
   onClose,
   onConfirm,
 }) => {
@@ -45,6 +47,7 @@ export const MarkPaidModal: React.FC<MarkPaidModalProps> = ({
     addOneCalendarMonth(item.fechaExactaVencimiento, item.diaVencimientoOCobro)
   );
   const [receiptFile, setReceiptFile] = useState<File | undefined>(undefined);
+  const [connectingDrive, setConnectingDrive] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -207,7 +210,7 @@ export const MarkPaidModal: React.FC<MarkPaidModalProps> = ({
           </div>
 
           <div className="rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] p-3.5">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 text-xs font-semibold text-[#111318]">
                 <Paperclip
                   className="h-3.5 w-3.5 text-[#1D4ED8]"
@@ -217,7 +220,7 @@ export const MarkPaidModal: React.FC<MarkPaidModalProps> = ({
               </span>
               {!hasDriveToken && (
                 <span className="text-[11px] text-[#747A88]">
-                  Requiere Google conectado
+                  Google Drive desconectado
                 </span>
               )}
             </div>
@@ -236,9 +239,35 @@ export const MarkPaidModal: React.FC<MarkPaidModalProps> = ({
                 />
               </label>
             ) : (
-              <p className="mt-1 text-[11px] text-[#525866]">
-                Podés adjuntar el ticket después desde el ícono de clip en el Tablero o Movimientos.
-              </p>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-[11px] text-[#525866]">
+                  Conectá Google Drive para subir el ticket ahora mismo sin perder lo cargado.
+                </p>
+                {onSignInDrive && (
+                  <button
+                    type="button"
+                    disabled={connectingDrive || busy}
+                    onClick={async () => {
+                      setConnectingDrive(true);
+                      setError(null);
+                      try {
+                        await onSignInDrive();
+                      } catch (err) {
+                        setError(
+                          err instanceof Error
+                            ? err.message
+                            : 'No se pudo conectar Google Drive.'
+                        );
+                      } finally {
+                        setConnectingDrive(false);
+                      }
+                    }}
+                    className="inline-flex min-h-[32px] shrink-0 items-center justify-center rounded-lg border border-[#BFDBFE] bg-white px-3 py-1 text-[11px] font-semibold text-[#1D4ED8] hover:bg-[#EFF6FF] disabled:opacity-60"
+                  >
+                    {connectingDrive ? 'Conectando...' : 'Conectar Google Drive'}
+                  </button>
+                )}
+              </div>
             )}
           </div>
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   AlertTriangle,
@@ -8,12 +8,17 @@ import {
   CheckCircle2,
   Paperclip,
   Pencil,
+  Plus,
   ShieldCheck,
+  ShoppingBasket,
+  Trash2,
   Undo2,
 } from 'lucide-react';
 import {
   BankingPaymentStatus,
   CashFlowMatchResult,
+  FoodBudgetStatus,
+  FoodExpense,
   ItemFinanciero,
   QuincenaCaja,
   VentanaQuincena,
@@ -29,6 +34,9 @@ import { InlineDateEditor } from './InlineDateEditor';
 
 interface QuincenalMatcherViewProps {
   matchResult: CashFlowMatchResult;
+  foodExpenses: FoodExpense[];
+  foodBudgetStatus: FoodBudgetStatus;
+  currentUserUid: string;
   canEditFinances: boolean;
   minFoodReserveARS: number;
   onChangeMinFoodReserveARS: (val: number) => void;
@@ -42,6 +50,13 @@ interface QuincenalMatcherViewProps {
   ) => void;
   onOpenReceipts: (item: ItemFinanciero) => void;
   onMoveVentana: (item: ItemFinanciero, targetVentana: VentanaQuincena) => void;
+  onAddFoodExpense: (input: {
+    concepto: string;
+    comercio?: string;
+    monto: number;
+    fechaISO: string;
+  }) => Promise<void> | void;
+  onDeleteFoodExpense: (expenseId: string) => Promise<void> | void;
 }
 
 function getStatusIndicator(status: BankingPaymentStatus): {
@@ -252,6 +267,14 @@ const QuincenaColumn: React.FC<{
           )}
           {caja.itemsIngreso.map((inc) => {
             const attachCount = inc.adjuntos?.length ?? 0;
+            const effectiveAmount =
+              inc.estado === 'PAGADO' && inc.montoPagado !== undefined
+                ? inc.montoPagado
+                : inc.montoPactado;
+            const hasIncomeVariance =
+              inc.estado === 'PAGADO' &&
+              inc.montoPagado !== undefined &&
+              inc.montoPagado !== inc.montoPactado;
             return (
               <div
                 key={inc.id}
@@ -285,13 +308,18 @@ const QuincenaColumn: React.FC<{
                       }
                     />
                     <span>· {inc.bolsilloResponsable}</span>
+                    {hasIncomeVariance && (
+                      <span className="font-mono-tabular text-[11px] text-[#4338CA]">
+                        · Pactado: {MoneyUtils.formatARS(inc.montoPactado)}
+                      </span>
+                    )}
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-1.5 sm:justify-end shrink-0">
                   <InlineAmountEditor
                     itemTitle={inc.titulo}
-                    amount={inc.montoPactado}
+                    amount={effectiveAmount}
                     prefix="+"
                     readOnly={!canEditFinances}
                     textClassName="text-xs font-bold text-[#1D4ED8]"
@@ -373,8 +401,18 @@ const QuincenaColumn: React.FC<{
           <div className="divide-y divide-[#ECEAE2]">
             {caja.asignaciones.map((alloc) => {
               const statusMeta = getStatusIndicator(alloc.bankingStatus);
+              const ob = alloc.obligacion;
+              const effectiveAmount =
+                ob.estado === 'PAGADO' && ob.montoPagado !== undefined
+                  ? ob.montoPagado
+                  : ob.montoPactado;
+              const hasExpenseVariance =
+                ob.estado === 'PAGADO' &&
+                ob.montoPagado !== undefined &&
+                ob.montoPagado !== ob.montoPactado;
+
               return (
-                <div key={alloc.obligacion.id} className="space-y-2 py-3.5">
+                <div key={ob.id} className="space-y-2 py-3.5">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
@@ -406,11 +444,11 @@ const QuincenaColumn: React.FC<{
                       </div>
 
                       <p className="text-sm font-bold text-[#111318]">
-                        {alloc.obligacion.titulo}
+                        {ob.titulo}
                       </p>
 
                       <p className="font-mono-tabular text-xs text-[#525866]">
-                        Vence {formatDateAR(alloc.obligacion.fechaExactaVencimiento)}
+                        Vence {formatDateAR(ob.fechaExactaVencimiento)}
                         {alloc.ventanaPagoDesdeISO && (
                           <span className="font-semibold text-[#B45309]">
                             {' '}
@@ -418,26 +456,28 @@ const QuincenaColumn: React.FC<{
                             {formatShortDateAR(alloc.fechaLimiteRecomendadaISO)}
                           </span>
                         )}
+                        {hasExpenseVariance && (
+                          <span className="font-semibold text-[#B45309]">
+                            {' '}
+                            · Pactado: {MoneyUtils.formatARS(ob.montoPactado)}
+                          </span>
+                        )}
                       </p>
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end shrink-0">
                       <InlineAmountEditor
-                        itemTitle={alloc.obligacion.titulo}
-                        amount={alloc.obligacion.montoPactado}
+                        itemTitle={ob.titulo}
+                        amount={effectiveAmount}
                         readOnly={!canEditFinances}
                         textClassName="text-sm font-bold text-[#111318]"
-                        onSaveAmount={(val) =>
-                          onQuickUpdateAmount(alloc.obligacion, val)
-                        }
+                        onSaveAmount={(val) => onQuickUpdateAmount(ob, val)}
                       />
                       {canEditFinances && (
                         <div className="flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={() =>
-                              onMoveVentana(alloc.obligacion, oppositeVentana)
-                            }
+                            onClick={() => onMoveVentana(ob, oppositeVentana)}
                             title={`Mover a la otra quincena (${moveLabel})`}
                             className="inline-flex min-h-[34px] items-center gap-1 rounded-lg border border-[#DFDDD4] bg-[#F7F7F3] px-2.5 py-1 text-[11px] font-medium text-[#111318] hover:bg-[#ECEAE2]"
                           >
@@ -447,11 +487,11 @@ const QuincenaColumn: React.FC<{
                             />
                             {moveLabel}
                           </button>
-                          {alloc.obligacion.estado === 'PENDIENTE' && (
+                          {ob.estado === 'PENDIENTE' && (
                             <button
                               type="button"
-                              onClick={() => onMarkPaid(alloc.obligacion)}
-                              aria-label={`Pagar ${alloc.obligacion.titulo}`}
+                              onClick={() => onMarkPaid(ob)}
+                              aria-label={`Pagar ${ob.titulo}`}
                               className="inline-flex min-h-[34px] items-center rounded-lg bg-[#1D4ED8] px-3 py-1 text-xs font-semibold text-white hover:bg-[#1E40AF]"
                             >
                               Pagar
@@ -521,6 +561,9 @@ const QuincenaColumn: React.FC<{
 
 export const QuincenalMatcherView: React.FC<QuincenalMatcherViewProps> = ({
   matchResult,
+  foodExpenses,
+  foodBudgetStatus,
+  currentUserUid,
   canEditFinances,
   minFoodReserveARS,
   onChangeMinFoodReserveARS,
@@ -531,21 +574,89 @@ export const QuincenalMatcherView: React.FC<QuincenalMatcherViewProps> = ({
   onQuickUpdateDates,
   onOpenReceipts,
   onMoveVentana,
+  onAddFoodExpense,
+  onDeleteFoodExpense,
 }) => {
   const { q1, q2, alertaDescalce, summary, referenceDateISO } = matchResult;
+
+  const [concepto, setConcepto] = useState('');
+  const [comercio, setComercio] = useState('');
+  const [montoStr, setMontoStr] = useState('');
+  const [fechaISO, setFechaISO] = useState(referenceDateISO);
+  const [foodError, setFoodError] = useState<string | null>(null);
+  const [savingFood, setSavingFood] = useState(false);
+
+  useEffect(() => {
+    setFechaISO(referenceDateISO);
+  }, [summary.periodo, referenceDateISO]);
+
+  const periodFoodExpenses = useMemo(
+    () =>
+      foodExpenses
+        .filter((e) => e.periodo === summary.periodo)
+        .sort((a, b) => b.fechaISO.localeCompare(a.fechaISO)),
+    [foodExpenses, summary.periodo]
+  );
+
+  const handleSubmitFood = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFoodError(null);
+    const cleanConcept = concepto.trim();
+    const parsedAmount = MoneyUtils.parseARSInput(montoStr);
+    if (!cleanConcept) {
+      setFoodError('Escribí qué compraste (ej: Súper semanal, Verdulería).');
+      return;
+    }
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setFoodError('Ingresá un monto válido mayor a $0.');
+      return;
+    }
+    setSavingFood(true);
+    try {
+      await onAddFoodExpense({
+        concepto: cleanConcept,
+        comercio: comercio.trim() || undefined,
+        monto: parsedAmount,
+        fechaISO: /^\d{4}-\d{2}-\d{2}$/.test(fechaISO)
+          ? fechaISO
+          : referenceDateISO,
+      });
+      setConcepto('');
+      setComercio('');
+      setMontoStr('');
+    } catch (err) {
+      setFoodError(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo guardar el gasto de comida.'
+      );
+    } finally {
+      setSavingFood(false);
+    }
+  };
+
+  const hasVariance =
+    summary.desvioObligacionesCents !== 0 || summary.desvioIngresosCents !== 0;
+
+  const foodBarPct = Math.min(100, Math.round(foodBudgetStatus.porcentajeConsumidoMinimo));
+  const foodBarColor = foodBudgetStatus.excedeMinimo
+    ? 'bg-[#DC2626]'
+    : foodBudgetStatus.porcentajeConsumidoMinimo >= 85
+      ? 'bg-[#D97706]'
+      : 'bg-[#1D4ED8]';
 
   return (
     <div className="space-y-7">
       <div className="flex flex-col gap-3 border-b border-[#D8D6CC] pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#1D4ED8]">
-            Ingresos y Calce de Liquidez
+            Ingresos, Calce y Comida Real
           </p>
           <h1 className="mt-0.5 font-display text-2xl font-bold tracking-tight text-[#111318] sm:text-3xl">
             Ingresos y Quincenas · {formatPeriodoLabel(summary.periodo)}
           </h1>
           <p className="mt-1 text-xs text-[#525866] sm:text-sm">
-            Editá tus cobros al {formatShortDateAR(referenceDateISO)} y calzá vencimientos entre 1° y 2° Quincena protegiendo el mínimo de comida.
+            Editá tus cobros al {formatShortDateAR(referenceDateISO)}, calzá vencimientos entre 1° y 2° Quincena y registrá las compras reales del presupuesto de comida.
           </p>
         </div>
 
@@ -593,7 +704,7 @@ export const QuincenalMatcherView: React.FC<QuincenalMatcherViewProps> = ({
             aria-hidden="true"
           />
         )}
-        <div>
+        <div className="space-y-1">
           <p
             className={`text-sm font-bold ${
               alertaDescalce.hayDescalce ? 'text-[#92400E]' : 'text-[#1D4ED8]'
@@ -603,9 +714,263 @@ export const QuincenalMatcherView: React.FC<QuincenalMatcherViewProps> = ({
               ? `Atención en 1° Quincena: reservá ${MoneyUtils.formatARSCents(alertaDescalce.montoAReservarCents)} del mes anterior o ajustá vencimientos`
               : 'Quincenas equilibradas respetando tu mínimo de comida'}
           </p>
-          <p className="mt-0.5 text-xs text-[#525866]">{alertaDescalce.mensaje}</p>
+          <p className="text-xs text-[#525866]">{alertaDescalce.mensaje}</p>
+          {hasVariance && (
+            <p className="font-mono-tabular text-[11px] font-semibold text-[#4338CA]">
+              Desvío real vs pactado ya reflejado en el cálculo:{' '}
+              {summary.desvioObligacionesCents !== 0 && (
+                <span>
+                  Obligaciones{' '}
+                  {summary.desvioObligacionesCents > 0 ? '+' : ''}
+                  {MoneyUtils.formatARSCents(summary.desvioObligacionesCents)}
+                </span>
+              )}
+              {summary.desvioObligacionesCents !== 0 &&
+                summary.desvioIngresosCents !== 0 &&
+                ' · '}
+              {summary.desvioIngresosCents !== 0 && (
+                <span>
+                  Ingresos {summary.desvioIngresosCents > 0 ? '+' : ''}
+                  {MoneyUtils.formatARSCents(summary.desvioIngresosCents)}
+                </span>
+              )}
+            </p>
+          )}
         </div>
       </div>
+
+      {/* Bloque Real: Control Diario de Comida y Supermercado */}
+      <section
+        aria-labelledby="food-budget-heading"
+        className="overflow-hidden rounded-2xl border border-[#DFDDD4] bg-white shadow-[0_2px_10px_rgba(17,19,24,0.04)]"
+      >
+        <div className="flex flex-col gap-4 border-b border-[#E7E5DC] bg-[#F5F8FF] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#BFDBFE] bg-white text-[#1D4ED8]">
+              <ShoppingBasket className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div>
+              <h2
+                id="food-budget-heading"
+                className="font-display text-base font-bold text-[#111318] sm:text-lg"
+              >
+                Control Real de Comida y Supermercado
+              </h2>
+              <p className="text-xs text-[#525866]">
+                Cada compra cargada descuenta en tiempo real del tope protegido de{' '}
+                <span className="font-mono-tabular font-semibold text-[#111318]">
+                  {MoneyUtils.formatARSCents(foodBudgetStatus.minimoComidaCents)}
+                </span>
+                . Pueden cargar compras tanto el titular como su hermana.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 font-mono-tabular text-xs shrink-0">
+            <div className="rounded-xl border border-[#DFDDD4] bg-white px-3 py-2">
+              <span className="block font-sans text-[10px] uppercase tracking-wider text-[#686E7D]">
+                Gastado
+              </span>
+              <span className="font-bold text-[#111318]">
+                {MoneyUtils.formatARSCents(foodBudgetStatus.gastadoMesCents)}
+              </span>
+            </div>
+            <div className="rounded-xl border border-[#BFDBFE] bg-white px-3 py-2">
+              <span className="block font-sans text-[10px] uppercase tracking-wider text-[#1D4ED8]">
+                Resta (mín.)
+              </span>
+              <span
+                className={`font-bold ${
+                  foodBudgetStatus.restanteSobreMinimoCents >= 0
+                    ? 'text-[#1D4ED8]'
+                    : 'text-[#DC2626]'
+                }`}
+              >
+                {MoneyUtils.formatARSCents(foodBudgetStatus.restanteSobreMinimoCents)}
+              </span>
+            </div>
+            <div className="rounded-xl border border-[#C7D2FE] bg-white px-3 py-2">
+              <span className="block font-sans text-[10px] uppercase tracking-wider text-[#4338CA]">
+                Tope diario
+              </span>
+              <span className="font-bold text-[#4338CA]">
+                {MoneyUtils.formatCompactCents(
+                  foodBudgetStatus.presupuestoDiarioSugeridoCents
+                )}
+                /día
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4 px-5 py-4 sm:px-6">
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="text-[#525866]">
+                Consumo sobre mínimo protegido ({foodBudgetStatus.cantidadCompras}{' '}
+                compra{foodBudgetStatus.cantidadCompras === 1 ? '' : 's'} · quedan{' '}
+                {foodBudgetStatus.diasRestantesMes} día
+                {foodBudgetStatus.diasRestantesMes === 1 ? '' : 's'} en el mes)
+              </span>
+              <span
+                className={`font-mono-tabular font-bold ${
+                  foodBudgetStatus.excedeMinimo ? 'text-[#DC2626]' : 'text-[#1D4ED8]'
+                }`}
+              >
+                {foodBudgetStatus.porcentajeConsumidoMinimo.toFixed(1)}% · Queda sobre
+                caja real:{' '}
+                {MoneyUtils.formatARSCents(
+                  foodBudgetStatus.restanteSobreDisponibleRealCents
+                )}
+              </span>
+            </div>
+            <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-[#ECEAE2]">
+              <div
+                style={{ width: `${foodBarPct}%` }}
+                className={`h-full transition-all duration-300 ${foodBarColor}`}
+              />
+            </div>
+          </div>
+
+          <form
+            onSubmit={handleSubmitFood}
+            className="grid grid-cols-1 gap-3 rounded-xl border border-[#E7E5DC] bg-[#FAF9F6] p-3.5 sm:grid-cols-12 sm:items-end"
+          >
+            <div className="sm:col-span-4">
+              <label
+                htmlFor="food-concepto"
+                className="block text-[11px] font-semibold uppercase tracking-wider text-[#525866]"
+              >
+                Compra / Detalle
+              </label>
+              <input
+                id="food-concepto"
+                type="text"
+                value={concepto}
+                onChange={(e) => setConcepto(e.target.value)}
+                placeholder="Ej: Compra semanal, Carnicería"
+                className="mt-1 w-full rounded-lg border border-[#D8D6CC] bg-white px-3 py-2 text-xs text-[#111318] focus:border-[#1D4ED8] focus:outline-none"
+              />
+            </div>
+            <div className="sm:col-span-3">
+              <label
+                htmlFor="food-comercio"
+                className="block text-[11px] font-semibold uppercase tracking-wider text-[#525866]"
+              >
+                Comercio (opcional)
+              </label>
+              <input
+                id="food-comercio"
+                type="text"
+                value={comercio}
+                onChange={(e) => setComercio(e.target.value)}
+                placeholder="Coto, Carrefour, Feria"
+                className="mt-1 w-full rounded-lg border border-[#D8D6CC] bg-white px-3 py-2 text-xs text-[#111318] focus:border-[#1D4ED8] focus:outline-none"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label
+                htmlFor="food-monto"
+                className="block text-[11px] font-semibold uppercase tracking-wider text-[#525866]"
+              >
+                Monto ($)
+              </label>
+              <input
+                id="food-monto"
+                type="text"
+                inputMode="decimal"
+                value={montoStr}
+                onChange={(e) => setMontoStr(e.target.value)}
+                placeholder="48500"
+                className="mt-1 w-full rounded-lg border border-[#D8D6CC] bg-white px-3 py-2 font-mono-tabular text-xs font-semibold text-[#111318] focus:border-[#1D4ED8] focus:outline-none"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label
+                htmlFor="food-fecha"
+                className="block text-[11px] font-semibold uppercase tracking-wider text-[#525866]"
+              >
+                Fecha
+              </label>
+              <input
+                id="food-fecha"
+                type="date"
+                value={fechaISO}
+                onChange={(e) => setFechaISO(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-[#D8D6CC] bg-white px-2.5 py-2 font-mono-tabular text-xs text-[#111318] focus:border-[#1D4ED8] focus:outline-none"
+              />
+            </div>
+            <div className="sm:col-span-1">
+              <button
+                type="submit"
+                disabled={savingFood}
+                className="inline-flex min-h-[36px] w-full items-center justify-center gap-1 rounded-lg bg-[#1D4ED8] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#1E40AF] disabled:opacity-60"
+              >
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>{savingFood ? '...' : 'Sumar'}</span>
+              </button>
+            </div>
+          </form>
+
+          {foodError && (
+            <p className="rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs font-medium text-[#B91C1C]">
+              {foodError}
+            </p>
+          )}
+
+          {periodFoodExpenses.length === 0 ? (
+            <p className="text-xs text-[#747A88]">
+              Todavía no cargaste compras de supermercado en{' '}
+              {formatPeriodoLabel(summary.periodo)}. Registrá la primera arriba para
+              ver cuánto presupuesto diario real queda.
+            </p>
+          ) : (
+            <div className="divide-y divide-[#ECEAE2] rounded-xl border border-[#ECEAE2]">
+              {periodFoodExpenses.map((exp) => {
+                const canDelete =
+                  canEditFinances || exp.createdByUid === currentUserUid;
+                return (
+                  <div
+                    key={exp.id}
+                    className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-semibold text-[#111318]">
+                        {exp.concepto}
+                        {exp.comercio && (
+                          <span className="font-normal text-[#525866]">
+                            {' '}
+                            · {exp.comercio}
+                          </span>
+                        )}
+                      </p>
+                      <p className="font-mono-tabular text-[11px] text-[#747A88]">
+                        {formatDateAR(exp.fechaISO)} · Cargado por{' '}
+                        {exp.createdByEmail}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-mono-tabular text-sm font-bold text-[#111318]">
+                        -{MoneyUtils.formatARS(exp.monto)}
+                      </span>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => void onDeleteFoodExpense(exp.id)}
+                          aria-label={`Eliminar gasto de comida ${exp.concepto}`}
+                          className="inline-flex min-h-[30px] min-w-[30px] items-center justify-center rounded-lg border border-[#FECACA] bg-[#FEF2F2] p-1 text-[#DC2626] hover:bg-[#FEE2E2]"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <QuincenaColumn
@@ -634,3 +999,4 @@ export const QuincenalMatcherView: React.FC<QuincenalMatcherViewProps> = ({
     </div>
   );
 };
+

@@ -21,6 +21,7 @@ import {
 } from '../utils/dateUtils';
 import { estimateMonthlyCardInterestCents } from '../utils/cashFlowMatcher';
 import { MoneyUtils } from '../utils/moneyUtils';
+import { ConfirmDialog } from './ConfirmDialog';
 import { InlineAmountEditor } from './InlineAmountEditor';
 import { InlineDateEditor } from './InlineDateEditor';
 
@@ -28,6 +29,7 @@ interface TarjetasViewProps {
   matchResult: CashFlowMatchResult;
   periodItems: ItemFinanciero[];
   canEditFinances: boolean;
+  hasFuturePeriods?: boolean;
   minFoodReserveARS: number;
   onChangeMinFoodReserveARS: (val: number) => void;
   onMarkPaid: (item: ItemFinanciero) => void;
@@ -35,6 +37,11 @@ interface TarjetasViewProps {
   onEditItem: (item: ItemFinanciero) => void;
   onQuickUpdateAmount: (item: ItemFinanciero, newAmount: number) => void;
   onQuickUpdateCapital: (item: ItemFinanciero, newCapital: number) => void;
+  onAmortizeCard: (
+    card: ItemFinanciero,
+    amountARS: number,
+    applyToFuture: boolean
+  ) => void;
   onQuickUpdateDates: (
     item: ItemFinanciero,
     updates: { fechaExactaVencimiento?: string; fechaCierre?: string }
@@ -73,6 +80,7 @@ export const TarjetasView: React.FC<TarjetasViewProps> = ({
   matchResult,
   periodItems,
   canEditFinances,
+  hasFuturePeriods = false,
   minFoodReserveARS,
   onChangeMinFoodReserveARS,
   onMarkPaid,
@@ -80,11 +88,21 @@ export const TarjetasView: React.FC<TarjetasViewProps> = ({
   onEditItem,
   onQuickUpdateAmount,
   onQuickUpdateCapital,
+  onAmortizeCard,
   onQuickUpdateDates,
   onOpenReceipts,
   onNavigateTab,
 }) => {
   const [extraCapitalSimARS, setExtraCapitalSimARS] = useState<number>(500000);
+  const [pendingAmortization, setPendingAmortization] = useState<{
+    card: ItemFinanciero;
+    amountARS: number;
+    previousCapitalARS: number;
+    nextCapitalARS: number;
+    monthlySavedCents: number;
+  } | null>(null);
+  const [applyAmortizationToFuture, setApplyAmortizationToFuture] =
+    useState(true);
 
   const { summary, tarjetasBloqueadasPorCierre } = matchResult;
 
@@ -118,30 +136,28 @@ export const TarjetasView: React.FC<TarjetasViewProps> = ({
     rotatingCards.map((c) => MoneyUtils.toCents(c.saldoCapitalTotal ?? 0))
   );
 
-  const patagoniaCard = rotatingCards.find((i) =>
-    i.titulo.toLowerCase().includes('patagonia')
-  );
-  const mutualCard = rotatingCards.find((i) =>
-    i.titulo.toLowerCase().includes('mutual')
-  );
-
-  const patCapARS = patagoniaCard?.saldoCapitalTotal ?? 1258815.9;
-  const patTna = patagoniaCard?.tnaEstimada ?? 105;
-  const patNewCapitalARS = Math.max(0, patCapARS - extraCapitalSimARS);
-  const patMonthlyIntSaved = Math.max(
-    0,
-    estimateMonthlyCardInterestCents(patCapARS, patTna) -
-      estimateMonthlyCardInterestCents(patNewCapitalARS, patTna)
-  );
-
-  const mutualCapARS = mutualCard?.saldoCapitalTotal ?? 771476.6;
-  const mutualTna = mutualCard?.tnaEstimada ?? 98.5;
-  const mutualNewCapitalARS = Math.max(0, mutualCapARS - extraCapitalSimARS);
-  const mutualMonthlyIntSaved = Math.max(
-    0,
-    estimateMonthlyCardInterestCents(mutualCapARS, mutualTna) -
-      estimateMonthlyCardInterestCents(mutualNewCapitalARS, mutualTna)
-  );
+  const cardSimulations = useMemo(() => {
+    return rotatingCards.map((card, idx) => {
+      const capARS = Math.max(0, card.saldoCapitalTotal ?? 0);
+      const tna = card.tnaEstimada ?? 0;
+      const newCapARS = MoneyUtils.fromCents(
+        Math.max(0, MoneyUtils.toCents(capARS) - MoneyUtils.toCents(extraCapitalSimARS))
+      );
+      const monthlyIntSavedCents = Math.max(
+        0,
+        estimateMonthlyCardInterestCents(capARS, tna) -
+          estimateMonthlyCardInterestCents(newCapARS, tna)
+      );
+      return {
+        card,
+        optionLetter: String.fromCharCode(65 + idx),
+        capARS,
+        tna,
+        newCapARS,
+        monthlyIntSavedCents,
+      };
+    });
+  }, [rotatingCards, extraCapitalSimARS]);
 
   return (
     <div className="space-y-8">
@@ -673,53 +689,135 @@ export const TarjetasView: React.FC<TarjetasViewProps> = ({
                 className="w-full cursor-pointer accent-[#1D4ED8]"
               />
 
-              <div className="grid grid-cols-1 gap-4 pt-2 text-xs sm:grid-cols-2">
-                <div className="rounded-xl border border-[#DCE7FE] bg-[#F4F7FF] p-4">
-                  <p className="font-bold text-[#111318]">
-                    Opción A · Amortizar Banco Patagonia
-                  </p>
-                  <p className="mt-1.5 leading-relaxed text-[#525866]">
-                    Baja el capital adeudado de{' '}
-                    <span className="font-mono-tabular font-semibold text-[#111318]">
-                      {MoneyUtils.formatARS(patCapARS)}
-                    </span>{' '}
-                    a{' '}
-                    <span className="font-mono-tabular font-bold text-[#111318]">
-                      {MoneyUtils.formatARS(patNewCapitalARS)}
-                    </span>{' '}
-                    y ahorrás aprox.{' '}
-                    <span className="font-mono-tabular font-bold text-[#1D4ED8]">
-                      {MoneyUtils.formatARSCents(patMonthlyIntSaved)}/mes
-                    </span>{' '}
-                    en intereses (TNA {patTna}%).
-                  </p>
-                </div>
+              {cardSimulations.length === 0 ? (
+                <p className="text-xs text-[#747A88]">
+                  Agregá una tarjeta rotativa con saldo capital para simular y aplicar amortizaciones reales.
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 pt-2 text-xs sm:grid-cols-2">
+                  {cardSimulations.map((sim, idx) => {
+                    const isPrimaryStyle = idx % 2 === 0;
+                    const canApply =
+                      canEditFinances &&
+                      extraCapitalSimARS > 0 &&
+                      sim.capARS > 0;
+                    return (
+                      <div
+                        key={sim.card.id}
+                        className={`flex flex-col justify-between gap-3 rounded-xl border p-4 ${
+                          isPrimaryStyle
+                            ? 'border-[#DCE7FE] bg-[#F4F7FF]'
+                            : 'border-[#E0E7FF] bg-[#F5F3FF]'
+                        }`}
+                      >
+                        <div>
+                          <p className="font-bold text-[#111318]">
+                            Opción {sim.optionLetter} · Amortizar {sim.card.titulo}
+                          </p>
+                          <p className="mt-1.5 leading-relaxed text-[#525866]">
+                            Baja el capital adeudado de{' '}
+                            <span className="font-mono-tabular font-semibold text-[#111318]">
+                              {MoneyUtils.formatARS(sim.capARS)}
+                            </span>{' '}
+                            a{' '}
+                            <span className="font-mono-tabular font-bold text-[#111318]">
+                              {MoneyUtils.formatARS(sim.newCapARS)}
+                            </span>
+                            {sim.monthlyIntSavedCents > 0 ? (
+                              <>
+                                {' '}
+                                y ahorrás aprox.{' '}
+                                <span
+                                  className={`font-mono-tabular font-bold ${
+                                    isPrimaryStyle
+                                      ? 'text-[#1D4ED8]'
+                                      : 'text-[#4338CA]'
+                                  }`}
+                                >
+                                  {MoneyUtils.formatARSCents(
+                                    sim.monthlyIntSavedCents
+                                  )}
+                                  /mes
+                                </span>{' '}
+                                en intereses (TNA {sim.tna}%).
+                              </>
+                            ) : (
+                              '.'
+                            )}
+                          </p>
+                        </div>
 
-                <div className="rounded-xl border border-[#E0E7FF] bg-[#F5F3FF] p-4">
-                  <p className="font-bold text-[#111318]">
-                    Opción B · Amortizar Mutual Patronal
-                  </p>
-                  <p className="mt-1.5 leading-relaxed text-[#525866]">
-                    Baja el capital adeudado de{' '}
-                    <span className="font-mono-tabular font-semibold text-[#111318]">
-                      {MoneyUtils.formatARS(mutualCapARS)}
-                    </span>{' '}
-                    a{' '}
-                    <span className="font-mono-tabular font-bold text-[#111318]">
-                      {MoneyUtils.formatARS(mutualNewCapitalARS)}
-                    </span>{' '}
-                    y ahorrás aprox.{' '}
-                    <span className="font-mono-tabular font-bold text-[#4338CA]">
-                      {MoneyUtils.formatARSCents(mutualMonthlyIntSaved)}/mes
-                    </span>{' '}
-                    en intereses (TNA {mutualTna}%).
-                  </p>
+                        {canEditFinances && (
+                          <div className="flex items-center justify-between gap-2 border-t border-[#111318]/10 pt-2.5">
+                            <span className="text-[11px] text-[#525866]">
+                              {sim.capARS <= 0
+                                ? 'Capital en $0'
+                                : 'Impactar en deuda real:'}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={!canApply}
+                              onClick={() => {
+                                setApplyAmortizationToFuture(hasFuturePeriods);
+                                setPendingAmortization({
+                                  card: sim.card,
+                                  amountARS: extraCapitalSimARS,
+                                  previousCapitalARS: sim.capARS,
+                                  nextCapitalARS: sim.newCapARS,
+                                  monthlySavedCents: sim.monthlyIntSavedCents,
+                                });
+                              }}
+                              className="inline-flex min-h-[32px] items-center gap-1 rounded-lg bg-[#1D4ED8] px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-[#1E40AF] disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                              <Check className="h-3 w-3" aria-hidden="true" />
+                              Aplicar amortización
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
       </section>
+
+      {pendingAmortization && (
+        <ConfirmDialog
+          title={`¿Amortizar capital de ${pendingAmortization.card.titulo}?`}
+          description={`Se descontará ${MoneyUtils.formatARS(
+            Math.min(
+              pendingAmortization.amountARS,
+              pendingAmortization.previousCapitalARS
+            )
+          )} del saldo adeudado: bajará de ${MoneyUtils.formatARS(
+            pendingAmortization.previousCapitalARS
+          )} a ${MoneyUtils.formatARS(pendingAmortization.nextCapitalARS)}${
+            pendingAmortization.monthlySavedCents > 0
+              ? ` (ahorro estimado ~${MoneyUtils.formatARSCents(
+                  pendingAmortization.monthlySavedCents
+                )}/mes en intereses)`
+              : ''
+          }.${
+            hasFuturePeriods && applyAmortizationToFuture
+              ? ' También se reducirá el capital en los meses futuros ya generados.'
+              : ''
+          }`}
+          confirmLabel="Sí, registrar amortización"
+          tone="warning"
+          onCancel={() => setPendingAmortization(null)}
+          onConfirm={() => {
+            onAmortizeCard(
+              pendingAmortization.card,
+              pendingAmortization.amountARS,
+              hasFuturePeriods && applyAmortizationToFuture
+            );
+            setPendingAmortization(null);
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -431,6 +431,100 @@
         "updatedAt",
         "updatedByUid"
       ]
+    },
+    "FoodExpense": {
+      "title": "FoodExpense",
+      "description": "Gasto diario o compra de supermercado imputada a la reserva mensual de comida del hogar.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "householdId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "allowedUids": {
+          "type": "array",
+          "description": "UIDs autorizados del hogar (máximo 10)"
+        },
+        "allowedEmails": {
+          "type": "array",
+          "description": "Emails verificados autorizados del hogar (máximo 10)"
+        },
+        "periodo": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+        },
+        "concepto": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140
+        },
+        "comercio": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "monto": {
+          "type": "number"
+        },
+        "fechaISO": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "notas": {
+          "type": "string",
+          "maxLength": 400
+        },
+        "createdByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdByEmail": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "householdId",
+        "ownerUid",
+        "allowedUids",
+        "allowedEmails",
+        "periodo",
+        "concepto",
+        "monto",
+        "fechaISO",
+        "createdByUid",
+        "createdByEmail",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -463,6 +557,12 @@
         "$ref": "#/entities/ItemFinanciero"
       },
       "description": "Movimientos financieros mensuales del hogar."
+    },
+    "/households/{householdId}/foodExpenses/{expenseId}": {
+      "schema": {
+        "$ref": "#/entities/FoodExpense"
+      },
+      "description": "Compras variables de supermercado y alimentación descontadas de la reserva mensual de comida."
     }
   }
 }

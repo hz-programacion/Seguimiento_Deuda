@@ -28,9 +28,11 @@ import {
 import {
   CalendarReminderLead,
   batchCreateGoogleCalendarEvents,
+  buildCalendarEventSig,
   createGoogleCalendarEvent,
   deleteGoogleCalendarEvent,
   listMonthGoogleCalendarEvents,
+  patchGoogleCalendarEvent,
 } from '../services/calendarService';
 import { formatDateAR, formatPeriodoLabel, formatShortDateAR } from '../utils/dateUtils';
 import { MoneyUtils } from '../utils/moneyUtils';
@@ -54,6 +56,11 @@ type CalendarFilter = 'TODOS' | 'VENCIMIENTOS' | 'VENTANA_TARJETA' | 'COBROS' | 
 
 type PendingCalendarMutation =
   | { type: 'create-single'; event: CalendarPlannedEvent }
+  | {
+      type: 'patch-single';
+      googleEventId: string;
+      event: CalendarPlannedEvent;
+    }
   | { type: 'batch-create'; events: CalendarPlannedEvent[] }
   | { type: 'delete-google'; googleEvent: GoogleCalendarEventItem }
   | null;
@@ -252,6 +259,20 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
         setGoogleEvents((prev) => [...prev, created]);
         setHasLoadedMonth(true);
         onNotify(`Agendado en Google Calendar: ${pendingMutation.event.title}`);
+      } else if (pendingMutation.type === 'patch-single') {
+        const updated = await patchGoogleCalendarEvent(
+          pendingMutation.googleEventId,
+          pendingMutation.event,
+          reminderLead
+        );
+        setGoogleEvents((prev) =>
+          prev.map((ge) =>
+            ge.id === pendingMutation.googleEventId ? updated : ge
+          )
+        );
+        onNotify(
+          `Evento actualizado en Google Calendar: ${pendingMutation.event.title}`
+        );
       } else if (pendingMutation.type === 'batch-create') {
         const res = await batchCreateGoogleCalendarEvents(
           pendingMutation.events,
@@ -309,16 +330,47 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
   const renderEventActions = (ev: CalendarPlannedEvent) => {
     const linkedGoogle = googleByArgenKey.get(ev.eventKey);
     const itemObj = itemsMap.get(ev.itemId);
+    const currentSig = buildCalendarEventSig(ev);
+    const isOutdatedInGoogle = Boolean(
+      linkedGoogle &&
+        (linkedGoogle.startDateISO !== ev.dateISO ||
+          (linkedGoogle.argenCajaSig &&
+            linkedGoogle.argenCajaSig !== currentSig))
+    );
 
     return (
       <div className="flex flex-wrap items-center gap-2 pt-1">
         {hasWorkspaceToken &&
           (linkedGoogle ? (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1D4ED8]">
-                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                En Google Calendar
-              </span>
+              {isOutdatedInGoogle ? (
+                <>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#B45309]">
+                    <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
+                    Fecha/monto cambió
+                  </span>
+                  <button
+                    type="button"
+                    disabled={syncLoading}
+                    onClick={() =>
+                      setPendingMutation({
+                        type: 'patch-single',
+                        googleEventId: linkedGoogle.id,
+                        event: ev,
+                      })
+                    }
+                    className="inline-flex min-h-[30px] items-center gap-1 rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-2.5 py-0.5 text-[11px] font-semibold text-[#92400E] hover:bg-[#FEF3C7]"
+                  >
+                    <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                    Actualizar evento
+                  </button>
+                </>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1D4ED8]">
+                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  En Google Calendar
+                </span>
+              )}
               {linkedGoogle.htmlLink && (
                 <a
                   href={linkedGoogle.htmlLink}
@@ -980,25 +1032,33 @@ export const CalendarPlannerView: React.FC<CalendarPlannerViewProps> = ({
           title={
             pendingMutation.type === 'delete-google'
               ? '¿Quitar recordatorio de Google Calendar?'
-              : pendingMutation.type === 'batch-create'
-                ? `¿Agendar ${pendingMutation.events.length} evento(s) en Google Calendar?`
-                : '¿Agendar recordatorio en Google Calendar?'
+              : pendingMutation.type === 'patch-single'
+                ? '¿Actualizar evento en Google Calendar?'
+                : pendingMutation.type === 'batch-create'
+                  ? `¿Agendar ${pendingMutation.events.length} evento(s) en Google Calendar?`
+                  : '¿Agendar recordatorio en Google Calendar?'
           }
           description={
             pendingMutation.type === 'delete-google'
               ? `Se eliminará "${pendingMutation.googleEvent.summary}" de tu calendario principal de Google.`
-              : pendingMutation.type === 'batch-create'
-                ? `Se crearán ${pendingMutation.events.length} eventos en tu Google Calendar principal para ${formatPeriodoLabel(
-                    activePeriodo
-                  )} (cobros, vencimientos en día hábil y ventanas de tarjeta) con alerta anticipada.`
-                : `Se creará el evento "[ArgenCaja] ${pendingMutation.event.title}" el ${formatDateAR(
+              : pendingMutation.type === 'patch-single'
+                ? `Se actualizará "[ArgenCaja] ${pendingMutation.event.title}" a la fecha ${formatDateAR(
                     pendingMutation.event.dateISO
-                  )} en tu Google Calendar principal.`
+                  )} y monto ${MoneyUtils.formatARS(pendingMutation.event.amountARS)}.`
+                : pendingMutation.type === 'batch-create'
+                  ? `Se crearán ${pendingMutation.events.length} eventos en tu Google Calendar principal para ${formatPeriodoLabel(
+                      activePeriodo
+                    )} (cobros, vencimientos en día hábil y ventanas de tarjeta) con alerta anticipada.`
+                  : `Se creará el evento "[ArgenCaja] ${pendingMutation.event.title}" el ${formatDateAR(
+                      pendingMutation.event.dateISO
+                    )} en tu Google Calendar principal.`
           }
           confirmLabel={
             pendingMutation.type === 'delete-google'
               ? 'Sí, quitar del calendario'
-              : 'Sí, agendar ahora'
+              : pendingMutation.type === 'patch-single'
+                ? 'Sí, actualizar evento'
+                : 'Sí, agendar ahora'
           }
           tone={pendingMutation.type === 'delete-google' ? 'danger' : 'warning'}
           busy={syncLoading}

@@ -127,6 +127,34 @@ export interface MonthSummary {
   porcentajeAvance: number;
   alivioMensualGanadoCents: number;
   itemsExtinguidosCount: number;
+  desvioObligacionesCents: number;
+  desvioIngresosCents: number;
+}
+
+export interface FoodExpense {
+  id: string;
+  periodo: PeriodoID;
+  concepto: string;
+  comercio?: string;
+  monto: number;
+  fechaISO: string;
+  notas?: string;
+  createdByUid: string;
+  createdByEmail: string;
+}
+
+export interface FoodBudgetStatus {
+  periodo: PeriodoID;
+  gastadoMesCents: number;
+  cantidadCompras: number;
+  minimoComidaCents: number;
+  disponibleComidaRealCents: number;
+  restanteSobreMinimoCents: number;
+  restanteSobreDisponibleRealCents: number;
+  porcentajeConsumidoMinimo: number;
+  diasRestantesMes: number;
+  presupuestoDiarioSugeridoCents: number;
+  excedeMinimo: boolean;
 }
 
 export interface MatchedAllocation {
@@ -239,6 +267,7 @@ export interface GoogleCalendarEventItem {
   startTimeLabel?: string;
   isAllDay: boolean;
   argenCajaKey?: string;
+  argenCajaSig?: string;
 }
 
 export type AppTab =

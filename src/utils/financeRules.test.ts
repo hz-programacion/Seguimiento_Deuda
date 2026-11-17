@@ -7,17 +7,25 @@ import {
 } from './seedData';
 import {
   computeCashflowWaterfall,
+  computeFoodBudgetStatus,
   computeMonthSummary,
   estimateMonthlyCardInterestCents,
+  getEffectiveItemAmountCents,
   runCashFlowMatcher,
 } from './cashFlowMatcher';
-import { closeAndCloneMonth, projectMultipleMonths } from './monthTransition';
+import {
+  amortizeRotatingCardCapital,
+  closeAndCloneMonth,
+  computeNextMonthProjection,
+  projectMultipleMonths,
+} from './monthTransition';
 import { addOneCalendarMonth, validateCardCycleDates } from './dateUtils';
 import {
   buildCalendarMonthGrid,
   buildMonthlyFinancialEvents,
   generateICSContent,
 } from './calendarPlanner';
+import { buildCalendarEventSig } from '../services/calendarService';
 
 test('MoneyUtils avoids IEEE 754 floating-point errors', () => {
   assert.equal(MoneyUtils.addAmounts(0.1, 0.2), 0.3);
@@ -389,6 +397,165 @@ test('generateICSContent produces valid RFC 5545 VCALENDAR output', () => {
   assert.ok(ics.includes('BEGIN:VALARM'));
   assert.ok(ics.includes('TRIGGER:-P1D'));
 });
+
+test('effective paid-amount accounting updates colchonComida, carryover, and variances', () => {
+  const seed = createSeedDecember2026();
+  const baseMatch = runCashFlowMatcher('2026-12', seed, '2026-12-05');
+
+  // Simulamos que Luz (1° Quincena) vino +$15.000 más cara y Sueldo Seguridad 1°Q cobró +$50.000 extra
+  const modified = seed.map((it) => {
+    if (it.id === 'dic26-srv-luz') {
+      return {
+        ...it,
+        estado: 'PAGADO' as const,
+        montoPagado: MoneyUtils.addAmounts(it.montoPactado, 15000),
+      };
+    }
+    if (it.id === 'dic26-ing-seg1') {
+      return {
+        ...it,
+        estado: 'PAGADO' as const,
+        montoPagado: MoneyUtils.addAmounts(it.montoPactado, 50000),
+      };
+    }
+    return it;
+  });
+
+  const paidLuz = modified.find((i) => i.id === 'dic26-srv-luz')!;
+  assert.equal(getEffectiveItemAmountCents(paidLuz), MoneyUtils.toCents(paidLuz.montoPagado!));
+
+  const realMatch = runCashFlowMatcher('2026-12', modified, '2026-12-05');
+  assert.equal(realMatch.summary.desvioObligacionesCents, 1500000);
+  assert.equal(realMatch.summary.desvioIngresosCents, 5000000);
+  // El colchón neto sube en +$35.000 ($50k ingreso extra - $15k gasto extra)
+  assert.equal(
+    realMatch.summary.colchonComidaCents - baseMatch.summary.colchonComidaCents,
+    3500000
+  );
+  // En 1° Quincena, el remanente de arrastre a Q2 refleja el neto +$35.000
+  assert.equal(
+    realMatch.q2.remanenteArrastreCents - baseMatch.q2.remanenteArrastreCents,
+    3500000
+  );
+});
+
+test('computeFoodBudgetStatus calculates monthly spend, remaining cushion, and daily allowance', () => {
+  const status = computeFoodBudgetStatus(
+    '2026-12',
+    [
+      {
+        id: 'f1',
+        periodo: '2026-12',
+        concepto: 'Coto semanal',
+        monto: 180000,
+        fechaISO: '2026-12-05',
+        createdByUid: 'u1',
+        createdByEmail: 'a@b.com',
+      },
+      {
+        id: 'f2',
+        periodo: '2026-12',
+        concepto: 'Carnicería',
+        monto: 120000,
+        fechaISO: '2026-12-10',
+        createdByUid: 'u1',
+        createdByEmail: 'a@b.com',
+      },
+      {
+        id: 'f-other-month',
+        periodo: '2027-01',
+        concepto: 'Otro mes',
+        monto: 999999,
+        fechaISO: '2027-01-02',
+        createdByUid: 'u1',
+        createdByEmail: 'a@b.com',
+      },
+    ],
+    106377044,
+    90000000,
+    '2026-12-12'
+  );
+
+  assert.equal(status.gastadoMesCents, 30000000); // $300.000
+  assert.equal(status.cantidadCompras, 2);
+  assert.equal(status.restanteSobreMinimoCents, 60000000); // $600.000
+  assert.equal(status.restanteSobreDisponibleRealCents, 76377044);
+  assert.equal(status.diasRestantesMes, 20); // 12..31 inclusive = 20 días
+  assert.equal(status.presupuestoDiarioSugeridoCents, 3000000); // $30.000/día
+  assert.equal(status.excedeMinimo, false);
+});
+
+test('amortizeRotatingCardCapital lowers capital, clamps at 0, truncates notes, and propagates future months', () => {
+  const projected = projectMultipleMonths('2026-12', 2, createSeedDecember2026());
+  const patDec = projected.find((i) => i.id === 'dic26-tarj-patagonia')!;
+  const originalCap = patDec.saldoCapitalTotal ?? 0;
+
+  const res = amortizeRotatingCardCapital(
+    projected,
+    'dic26-tarj-patagonia',
+    258815.9,
+    '2026-12-15',
+    true
+  );
+  assert.ok(res);
+  assert.equal(res.nextCapitalARS, MoneyUtils.subtractAmounts(originalCap, 258815.9));
+  assert.ok(res.monthlyInterestSavedCents > 0);
+  // Actualiza dic 2026 + ene 2027 + feb 2027 = 3 ítems
+  assert.equal(res.changedItems.length, 3);
+  for (const ch of res.changedItems) {
+    assert.equal(ch.saldoCapitalTotal, res.nextCapitalARS);
+    assert.ok((ch.notas?.length ?? 0) <= 1000);
+  }
+
+  // Amortización mayor al capital restante debe hacer clamp exacto en $0
+  const fullPayoff = amortizeRotatingCardCapital(
+    res.updatedItems,
+    'dic26-tarj-patagonia',
+    99999999,
+    '2026-12-20',
+    false
+  );
+  assert.ok(fullPayoff);
+  assert.equal(fullPayoff.nextCapitalARS, 0);
+});
+
+test('computeNextMonthProjection forecasts next period without mutating items and respects existing next period', () => {
+  const seed = createSeedDecember2026();
+  const simulated = computeNextMonthProjection('2026-12', seed);
+  assert.equal(simulated.nextPeriodo, '2027-01');
+  assert.equal(simulated.isAlreadyGenerated, false);
+  // Carrefour Máquina ($98.046,49) + cuota $180k Patagonia caen en Enero 2027
+  assert.ok(simulated.deltaObligacionesCents <= -MoneyUtils.toCents(98046.49));
+  assert.ok(
+    simulated.extinguishingItems.some((c) => c.titulo.includes('Carrefour'))
+  );
+
+  // Si ya existe Enero 2027 generado, isAlreadyGenerated debe ser true
+  const withJan = [...seed, ...closeAndCloneMonth('2026-12', seed).newItems];
+  const existing = computeNextMonthProjection('2026-12', withJan);
+  assert.equal(existing.isAlreadyGenerated, true);
+  assert.equal(
+    existing.nextSummary.obligacionesFijasTotalesCents,
+    simulated.nextSummary.obligacionesFijasTotalesCents
+  );
+});
+
+test('buildCalendarEventSig changes when event date, amount, or paid state changes', () => {
+  const seed = createSeedDecember2026();
+  const periodItems = seed.filter((i) => i.periodo === '2026-12');
+  const match = runCashFlowMatcher('2026-12', seed, '2026-12-05');
+  const ev = buildMonthlyFinancialEvents('2026-12', match, periodItems)[0];
+
+  const sig1 = buildCalendarEventSig(ev);
+  const sigMoved = buildCalendarEventSig({ ...ev, dateISO: '2026-12-20' });
+  const sigPaid = buildCalendarEventSig({ ...ev, isPaid: true });
+  const sigAmount = buildCalendarEventSig({ ...ev, amountARS: ev.amountARS + 500 });
+
+  assert.notEqual(sig1, sigMoved);
+  assert.notEqual(sig1, sigPaid);
+  assert.notEqual(sig1, sigAmount);
+});
+
 
 
 

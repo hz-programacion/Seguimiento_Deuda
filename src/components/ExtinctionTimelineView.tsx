@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { AppTab, CashFlowMatchResult, ItemFinanciero } from '../types/finance';
 import { addMonthsToPeriodo, formatPeriodoLabel } from '../utils/dateUtils';
+import { NextMonthProjection } from '../utils/monthTransition';
 import { MoneyUtils } from '../utils/moneyUtils';
 import { InlineAmountEditor } from './InlineAmountEditor';
 import { InlineDateEditor } from './InlineDateEditor';
@@ -18,6 +19,7 @@ import { InlineDateEditor } from './InlineDateEditor';
 interface ExtinctionTimelineViewProps {
   matchResult: CashFlowMatchResult;
   periodItems: ItemFinanciero[];
+  nextMonthProjection: NextMonthProjection;
   canEditFinances: boolean;
   onMarkPaid: (item: ItemFinanciero) => void;
   onEditItem: (item: ItemFinanciero) => void;
@@ -27,6 +29,7 @@ interface ExtinctionTimelineViewProps {
     updates: { fechaExactaVencimiento?: string; fechaCierre?: string }
   ) => void;
   onOpenReceipts: (item: ItemFinanciero) => void;
+  onAdvanceNextMonth?: () => void;
   onNavigateTab: (tab: AppTab) => void;
 }
 
@@ -40,12 +43,14 @@ interface DynamicMilestone {
 export const ExtinctionTimelineView: React.FC<ExtinctionTimelineViewProps> = ({
   matchResult,
   periodItems,
+  nextMonthProjection,
   canEditFinances,
   onMarkPaid,
   onEditItem,
   onQuickUpdateAmount,
   onQuickUpdateDates,
   onOpenReceipts,
+  onAdvanceNextMonth,
   onNavigateTab,
 }) => {
   const extinguishedItems = useMemo(
@@ -151,6 +156,124 @@ export const ExtinctionTimelineView: React.FC<ExtinctionTimelineViewProps> = ({
           <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
       </div>
+
+      {/* Comparativa Real: Mes Actual vs Próximo Mes */}
+      <section
+        aria-labelledby="comparativa-mes-heading"
+        className="overflow-hidden rounded-2xl border border-[#DFDDD4] bg-white shadow-[0_2px_10px_rgba(17,19,24,0.04)]"
+      >
+        <div className="flex flex-col gap-3 border-b border-[#DCE7FE] bg-[#F4F7FF] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2
+              id="comparativa-mes-heading"
+              className="font-display text-base font-bold text-[#111318]"
+            >
+              Trayectoria: {formatPeriodoLabel(nextMonthProjection.currentPeriodo)} →{' '}
+              {formatPeriodoLabel(nextMonthProjection.nextPeriodo)}
+            </h2>
+            <p className="mt-0.5 text-xs text-[#525866]">
+              {nextMonthProjection.isAlreadyGenerated
+                ? 'Comparación contra los valores reales que ya tenés cargados en el mes siguiente.'
+                : 'Simulación automática sin modificar tus datos actuales.'}
+            </p>
+          </div>
+          {canEditFinances && onAdvanceNextMonth && (
+            <button
+              type="button"
+              onClick={onAdvanceNextMonth}
+              className="inline-flex min-h-[34px] items-center gap-1.5 rounded-xl border border-[#BFDBFE] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#1D4ED8] hover:bg-[#EFF6FF] whitespace-nowrap shrink-0"
+            >
+              <span>
+                {nextMonthProjection.isAlreadyGenerated
+                  ? `Abrir ${formatPeriodoLabel(nextMonthProjection.nextPeriodo)}`
+                  : `Generar ${formatPeriodoLabel(nextMonthProjection.nextPeriodo)}`}
+              </span>
+              <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 divide-y divide-[#ECEAE2] sm:grid-cols-3 sm:divide-y-0 sm:divide-x">
+          <div className="p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#686E7D]">
+              Obligaciones Fijas
+            </p>
+            <p className="mt-1.5 font-mono-tabular text-lg font-bold text-[#111318]">
+              {MoneyUtils.formatARSCents(
+                nextMonthProjection.nextSummary.obligacionesFijasTotalesCents
+              )}
+            </p>
+            <p
+              className={`mt-1 font-mono-tabular text-xs font-semibold ${
+                nextMonthProjection.deltaObligacionesCents <= 0
+                  ? 'text-[#1D4ED8]'
+                  : 'text-[#B45309]'
+              }`}
+            >
+              {nextMonthProjection.deltaObligacionesCents <= 0 ? 'Baja ' : 'Sube '}
+              {MoneyUtils.formatARSCents(
+                Math.abs(nextMonthProjection.deltaObligacionesCents)
+              )}{' '}
+              vs este mes
+            </p>
+          </div>
+
+          <div className="p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#686E7D]">
+              Tarjetas y Cuotas
+            </p>
+            <p className="mt-1.5 font-mono-tabular text-lg font-bold text-[#111318]">
+              {MoneyUtils.formatARSCents(
+                nextMonthProjection.nextSummary.tarjetasTotalesCents +
+                  nextMonthProjection.nextSummary.cuotasFijasCents
+              )}
+            </p>
+            <p className="mt-1 font-mono-tabular text-xs text-[#525866]">
+              Tarjetas{' '}
+              {nextMonthProjection.deltaTarjetasCents <= 0 ? '-' : '+'}
+              {MoneyUtils.formatCompactCents(
+                Math.abs(nextMonthProjection.deltaTarjetasCents)
+              )}{' '}
+              · Cuotas{' '}
+              {nextMonthProjection.deltaCuotasFijasCents <= 0 ? '-' : '+'}
+              {MoneyUtils.formatCompactCents(
+                Math.abs(nextMonthProjection.deltaCuotasFijasCents)
+              )}
+            </p>
+          </div>
+
+          <div className="p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#686E7D]">
+              Plata Libre para Comida
+            </p>
+            <p className="mt-1.5 font-mono-tabular text-lg font-bold text-[#1D4ED8]">
+              {MoneyUtils.formatARSCents(
+                nextMonthProjection.nextSummary.colchonComidaCents
+              )}
+            </p>
+            <p className="mt-1 font-mono-tabular text-xs text-[#525866]">
+              {nextMonthProjection.deltaColchonComidaCents >= 0 ? '+' : '-'}
+              {MoneyUtils.formatARSCents(
+                Math.abs(nextMonthProjection.deltaColchonComidaCents)
+              )}{' '}
+              respecto a este mes
+            </p>
+          </div>
+        </div>
+
+        {(nextMonthProjection.extinguishingItems.length > 0 ||
+          nextMonthProjection.patagoniaCuotaDrops) && (
+          <div className="border-t border-[#ECEAE2] bg-[#FAF9F6] px-6 py-3 text-xs text-[#4338CA]">
+            <span className="font-semibold">Liberaciones en la transición: </span>
+            {[
+              ...nextMonthProjection.extinguishingItems.map((i) => i.titulo),
+              ...(nextMonthProjection.patagoniaCuotaDrops
+                ? ['Cuota fija Patagonia (-$180.000)']
+                : []),
+            ].join(' · ')}
+          </div>
+        )}
+      </section>
 
       {/* Alivio Ganado detalle cuando hay cuotas extinguidas */}
       {extinguishedItems.length > 0 && (

@@ -81,7 +81,14 @@ function mapRawEvent(raw: RawGoogleCalendarEvent): GoogleCalendarEventItem | nul
     startTimeLabel,
     isAllDay,
     argenCajaKey: raw.extendedProperties?.private?.argenCajaKey,
+    argenCajaSig: raw.extendedProperties?.private?.argenCajaSig,
   };
+}
+
+export function buildCalendarEventSig(event: CalendarPlannedEvent): string {
+  return `${event.dateISO}|${Math.round(event.amountARS * 100)}|${
+    event.isPaid ? 1 : 0
+  }`;
 }
 
 function getGoogleColorIdForKind(kind: CalendarEventKind, isUrgent: boolean): string {
@@ -126,20 +133,15 @@ export async function listMonthGoogleCalendarEvents(
     .filter((ev): ev is GoogleCalendarEventItem => ev !== null);
 }
 
-export async function createGoogleCalendarEvent(
+function buildGoogleEventPayload(
   event: CalendarPlannedEvent,
-  leadMode: CalendarReminderLead = '1-day-before'
-): Promise<GoogleCalendarEventItem> {
-  const token = getWorkspaceAccessToken();
-  if (!token) {
-    throw new Error('Conectá tu cuenta de Google para agendar en Google Calendar.');
-  }
-
+  leadMode: CalendarReminderLead
+) {
   const startDateTime = `${event.dateISO}T09:00:00-03:00`;
   const endDateTime = `${event.dateISO}T09:30:00-03:00`;
   const minutesList = getReminderMinutes(leadMode);
 
-  const payload = {
+  return {
     summary: `[ArgenCaja] ${event.title}`,
     description: event.description,
     start: {
@@ -159,9 +161,22 @@ export async function createGoogleCalendarEvent(
       private: {
         argenCajaApp: 'argencaja',
         argenCajaKey: event.eventKey,
+        argenCajaSig: buildCalendarEventSig(event),
       },
     },
   };
+}
+
+export async function createGoogleCalendarEvent(
+  event: CalendarPlannedEvent,
+  leadMode: CalendarReminderLead = '1-day-before'
+): Promise<GoogleCalendarEventItem> {
+  const token = getWorkspaceAccessToken();
+  if (!token) {
+    throw new Error('Conectá tu cuenta de Google para agendar en Google Calendar.');
+  }
+
+  const payload = buildGoogleEventPayload(event, leadMode);
 
   const res = await calendarFetch(CALENDAR_API_BASE, token, {
     method: 'POST',
@@ -172,6 +187,34 @@ export async function createGoogleCalendarEvent(
   const mapped = mapRawEvent(created);
   if (!mapped) {
     throw new Error('Google Calendar devolvió un evento incompleto.');
+  }
+  return mapped;
+}
+
+export async function patchGoogleCalendarEvent(
+  googleEventId: string,
+  event: CalendarPlannedEvent,
+  leadMode: CalendarReminderLead = '1-day-before'
+): Promise<GoogleCalendarEventItem> {
+  const token = getWorkspaceAccessToken();
+  if (!token) {
+    throw new Error('Conectá tu cuenta de Google para actualizar el evento.');
+  }
+
+  const payload = buildGoogleEventPayload(event, leadMode);
+  const res = await calendarFetch(
+    `${CALENDAR_API_BASE}/${encodeURIComponent(googleEventId)}`,
+    token,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }
+  );
+  const updated = (await res.json()) as RawGoogleCalendarEvent;
+  const mapped = mapRawEvent(updated);
+  if (!mapped) {
+    throw new Error('Google Calendar devolvió un evento incompleto al actualizar.');
   }
   return mapped;
 }

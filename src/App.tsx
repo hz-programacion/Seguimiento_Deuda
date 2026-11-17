@@ -4,6 +4,7 @@ import {
   AccessRequest,
   AppTab,
   ComprobanteAdjunto,
+  FoodExpense,
   HouseholdDoc,
   HouseholdInvite,
   HouseholdMember,
@@ -12,14 +13,23 @@ import {
   PeriodoID,
   VentanaQuincena,
 } from './types/finance';
-import { runCashFlowMatcher } from './utils/cashFlowMatcher';
+import {
+  computeFoodBudgetStatus,
+  runCashFlowMatcher,
+} from './utils/cashFlowMatcher';
 import {
   buildDateString,
   deriveVentanaFromDia,
   formatPeriodoLabel,
   getNextPeriodoId,
 } from './utils/dateUtils';
-import { closeAndCloneMonth, projectMultipleMonths } from './utils/monthTransition';
+import {
+  amortizeRotatingCardCapital,
+  closeAndCloneMonth,
+  computeNextMonthProjection,
+  projectMultipleMonths,
+} from './utils/monthTransition';
+import { MoneyUtils } from './utils/moneyUtils';
 import {
   createSeedDecember2026,
   SEED_PERIODO_INICIAL,
@@ -27,15 +37,19 @@ import {
 } from './utils/seedData';
 import {
   loadActivePeriod,
+  loadLocalFoodExpenses,
   loadLocalItems,
   loadMinFoodReserveARS,
   saveActivePeriod,
+  saveLocalFoodExpenses,
   saveLocalItems,
   saveMinFoodReserveARS,
 } from './services/storageService';
 import {
   AccessResolution,
   approveAccessRequest,
+  createFoodExpense,
+  deleteFoodExpense,
   deleteHouseholdItem,
   formatFirebaseAuthError,
   inviteMemberByEmail,
@@ -47,6 +61,7 @@ import {
   signInHouseholdGoogle,
   signOutHousehold,
   subscribeAdminDirectory,
+  subscribeFoodExpenses,
   subscribeHouseholdAuth,
   subscribeHouseholdDoc,
   subscribeHouseholdItems,
@@ -108,6 +123,9 @@ export default function App() {
 
   // Estado financiero del hogar (solo montado tras AUTHORIZED)
   const [items, setItems] = useState<ItemFinanciero[]>(() => loadLocalItems());
+  const [foodExpenses, setFoodExpenses] = useState<FoodExpense[]>(() =>
+    loadLocalFoodExpenses()
+  );
   const [activePeriodo, setActivePeriodo] = useState<PeriodoID>(() =>
     loadActivePeriod()
   );
@@ -151,6 +169,12 @@ export default function App() {
       saveLocalItems(items);
     }
   }, [accessResolution?.status, items]);
+
+  useEffect(() => {
+    if (accessResolution?.status === 'AUTHORIZED') {
+      saveLocalFoodExpenses(foodExpenses);
+    }
+  }, [accessResolution?.status, foodExpenses]);
 
   useEffect(() => {
     saveActivePeriod(activePeriodo);
@@ -328,10 +352,22 @@ export default function App() {
       );
     }
 
+    const unsubFood = subscribeFoodExpenses(
+      user,
+      role,
+      (cloudFood) => {
+        setFoodExpenses(cloudFood);
+      },
+      (err) => {
+        console.warn('Listener gastos comida:', err.message);
+      }
+    );
+
     return () => {
       unsubHH();
       unsubItems();
       unsubDirectory();
+      unsubFood();
     };
   }, [accessResolution]);
 
@@ -352,6 +388,11 @@ export default function App() {
     set.add(activePeriodo);
     return Array.from(set).sort();
   }, [items, activePeriodo]);
+
+  const hasFuturePeriods = useMemo(
+    () => availablePeriodos.some((p) => p > activePeriodo),
+    [availablePeriodos, activePeriodo]
+  );
 
   const periodItems = useMemo(
     () => items.filter((i) => i.periodo === activePeriodo),
@@ -374,6 +415,29 @@ export default function App() {
       Math.round(minFoodReserveARS * 100)
     );
   }, [activePeriodo, items, referenceDateISO, minFoodReserveARS]);
+
+  const foodBudgetStatus = useMemo(
+    () =>
+      computeFoodBudgetStatus(
+        activePeriodo,
+        foodExpenses,
+        Math.max(0, matchResult.summary.colchonComidaCents),
+        Math.round(minFoodReserveARS * 100),
+        referenceDateISO
+      ),
+    [
+      activePeriodo,
+      foodExpenses,
+      matchResult.summary.colchonComidaCents,
+      minFoodReserveARS,
+      referenceDateISO,
+    ]
+  );
+
+  const nextMonthProjection = useMemo(
+    () => computeNextMonthProjection(activePeriodo, items),
+    [activePeriodo, items]
+  );
 
   const receiptsItem = useMemo(
     () =>
@@ -428,6 +492,7 @@ export default function App() {
     await signOutHousehold();
     setAccessResolution({ status: 'UNAUTHENTICATED' });
     setHouseholdDoc(null);
+    setFoodExpenses([]);
     setIsUserMgmtOpen(false);
   }, []);
 
@@ -692,6 +757,10 @@ export default function App() {
         nextAdjuntos = [...(item.adjuntos ?? []), uploaded];
       }
 
+      const nextNotes = item.notas
+        ? `${item.notas} · Próximo venc. ref: ${proximoVencimiento}`
+        : `Próximo venc. sugerido: ${proximoVencimiento}`;
+
       const updated: ItemFinanciero = {
         ...item,
         estado: 'PAGADO',
@@ -699,9 +768,7 @@ export default function App() {
         fechaPagoReal,
         bolsilloResponsable,
         adjuntos: nextAdjuntos,
-        notas: item.notas
-          ? `${item.notas} · Próximo venc. ref: ${proximoVencimiento}`
-          : `Próximo venc. sugerido: ${proximoVencimiento}`,
+        notas: nextNotes.slice(0, 1000),
       };
       setItems((prev) => prev.map((it) => (it.id === item.id ? updated : it)));
       await syncItemCloud(updated);
@@ -925,6 +992,117 @@ export default function App() {
     [canEditFinances, syncItemCloud, showToast]
   );
 
+  const handleAmortizeCard = useCallback(
+    (card: ItemFinanciero, amountARS: number, applyToFuture: boolean) => {
+      if (!canEditFinances) return;
+      const res = amortizeRotatingCardCapital(
+        items,
+        card.id,
+        amountARS,
+        referenceDateISO,
+        applyToFuture
+      );
+      if (!res) return;
+
+      setItems(res.updatedItems);
+      if (activeHousehold && currentUser) {
+        if (res.changedItems.length > 1) {
+          pushHouseholdItems(
+            activeHousehold,
+            currentUser.uid,
+            res.changedItems
+          ).catch(() => {});
+        } else if (res.changedItems.length === 1) {
+          void syncItemCloud(res.changedItems[0]);
+        }
+      }
+
+      showToast(
+        `Capital de ${card.titulo} bajó a ${MoneyUtils.formatARS(res.nextCapitalARS)}${
+          res.monthlyInterestSavedCents > 0
+            ? ` · Ahorro estimado de intereses: ${MoneyUtils.formatARSCents(res.monthlyInterestSavedCents)}/mes`
+            : ''
+        }`
+      );
+    },
+    [
+      canEditFinances,
+      items,
+      referenceDateISO,
+      activeHousehold,
+      currentUser,
+      syncItemCloud,
+      showToast,
+    ]
+  );
+
+  const handleAddFoodExpense = useCallback(
+    async (input: {
+      concepto: string;
+      comercio?: string;
+      monto: number;
+      fechaISO: string;
+    }) => {
+      if (!currentUser) return;
+      const expenseId = `food-${Date.now().toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2, 6)}`;
+      const newExpense: FoodExpense = {
+        id: expenseId,
+        periodo: activePeriodo,
+        concepto: input.concepto,
+        comercio: input.comercio,
+        monto: input.monto,
+        fechaISO: input.fechaISO,
+        createdByUid: currentUser.uid,
+        createdByEmail:
+          (currentUser.email ?? '').trim().toLowerCase() || 'usuario@argencaja',
+      };
+
+      setFoodExpenses((prev) => [newExpense, ...prev]);
+      try {
+        if (activeHousehold) {
+          await createFoodExpense(activeHousehold, currentUser, {
+            id: expenseId,
+            periodo: activePeriodo,
+            concepto: input.concepto,
+            comercio: input.comercio,
+            monto: input.monto,
+            fechaISO: input.fechaISO,
+          });
+        }
+        showToast(
+          `Compra anotada: ${input.concepto} (-${MoneyUtils.formatARS(input.monto)})`
+        );
+      } catch (err) {
+        setFoodExpenses((prev) => prev.filter((e) => e.id !== expenseId));
+        throw err;
+      }
+    },
+    [currentUser, activePeriodo, activeHousehold, showToast]
+  );
+
+  const handleDeleteFoodExpense = useCallback(
+    async (expenseId: string) => {
+      const removed = foodExpenses.find((e) => e.id === expenseId);
+      setFoodExpenses((prev) => prev.filter((e) => e.id !== expenseId));
+      try {
+        if (activeHousehold && currentUser) {
+          await deleteFoodExpense(expenseId);
+        }
+        if (removed) {
+          showToast(`Gasto de comida eliminado: ${removed.concepto}`);
+        }
+      } catch (err) {
+        if (removed) {
+          setFoodExpenses((prev) => [removed, ...prev]);
+        }
+        console.warn('No se pudo eliminar gasto de comida:', err);
+      }
+    },
+    [foodExpenses, activeHousehold, currentUser, showToast]
+  );
+
   const handleConfirmPendingAction = useCallback(() => {
     if (!canEditFinances || !confirmAction) return;
 
@@ -1076,6 +1254,8 @@ export default function App() {
               <DashboardBento
                 matchResult={matchResult}
                 periodItems={periodItems}
+                foodBudgetStatus={foodBudgetStatus}
+                nextMonthProjection={nextMonthProjection}
                 canEditFinances={canEditFinances}
                 minFoodReserveARS={minFoodReserveARS}
                 onMarkPaid={(item) => {
@@ -1090,6 +1270,7 @@ export default function App() {
                 onQuickUpdateAmount={handleQuickUpdateAmount}
                 onQuickUpdateDates={handleQuickUpdateDates}
                 onOpenReceipts={(item) => setReceiptsItemId(item.id)}
+                onAddFoodExpense={handleAddFoodExpense}
                 onNavigateTab={setActiveTab}
               />
             )}
@@ -1141,6 +1322,9 @@ export default function App() {
             {activeTab === 'quincenas' && (
               <QuincenalMatcherView
                 matchResult={matchResult}
+                foodExpenses={foodExpenses}
+                foodBudgetStatus={foodBudgetStatus}
+                currentUserUid={currentUser?.uid ?? ''}
                 canEditFinances={canEditFinances}
                 minFoodReserveARS={minFoodReserveARS}
                 onChangeMinFoodReserveARS={handleChangeMinFoodReserveARS}
@@ -1158,6 +1342,8 @@ export default function App() {
                 onQuickUpdateDates={handleQuickUpdateDates}
                 onOpenReceipts={(item) => setReceiptsItemId(item.id)}
                 onMoveVentana={handleMoveVentana}
+                onAddFoodExpense={handleAddFoodExpense}
+                onDeleteFoodExpense={handleDeleteFoodExpense}
               />
             )}
 
@@ -1166,6 +1352,7 @@ export default function App() {
                 matchResult={matchResult}
                 periodItems={periodItems}
                 canEditFinances={canEditFinances}
+                hasFuturePeriods={hasFuturePeriods}
                 minFoodReserveARS={minFoodReserveARS}
                 onChangeMinFoodReserveARS={handleChangeMinFoodReserveARS}
                 onMarkPaid={(item) => {
@@ -1180,6 +1367,7 @@ export default function App() {
                 }}
                 onQuickUpdateAmount={handleQuickUpdateAmount}
                 onQuickUpdateCapital={handleQuickUpdateCapital}
+                onAmortizeCard={handleAmortizeCard}
                 onQuickUpdateDates={handleQuickUpdateDates}
                 onOpenReceipts={(item) => setReceiptsItemId(item.id)}
                 onNavigateTab={setActiveTab}
@@ -1190,6 +1378,7 @@ export default function App() {
               <ExtinctionTimelineView
                 matchResult={matchResult}
                 periodItems={periodItems}
+                nextMonthProjection={nextMonthProjection}
                 canEditFinances={canEditFinances}
                 onMarkPaid={(item) => {
                   if (!canEditFinances) return;
@@ -1203,6 +1392,9 @@ export default function App() {
                 onQuickUpdateAmount={handleQuickUpdateAmount}
                 onQuickUpdateDates={handleQuickUpdateDates}
                 onOpenReceipts={(item) => setReceiptsItemId(item.id)}
+                onAdvanceNextMonth={
+                  canEditFinances ? handleAdvanceNextMonth : undefined
+                }
                 onNavigateTab={setActiveTab}
               />
             )}
@@ -1216,6 +1408,7 @@ export default function App() {
         <MarkPaidModal
           item={payingItem}
           hasDriveToken={hasDriveToken}
+          onSignInDrive={handleSignInDrive}
           onClose={() => setPayingItem(null)}
           onConfirm={handleConfirmMarkPaid}
         />

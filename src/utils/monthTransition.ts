@@ -1,11 +1,16 @@
-import { ItemFinanciero, PeriodoID } from '../types/finance';
+import { ItemFinanciero, MonthSummary, PeriodoID } from '../types/finance';
 import {
   addOneCalendarMonth,
   deriveVentanaFromDia,
   formatPeriodoShort,
+  formatShortDateAR,
   getNextPeriodoId,
 } from './dateUtils';
 import { MoneyUtils } from './moneyUtils';
+import {
+  computeMonthSummary,
+  estimateMonthlyCardInterestCents,
+} from './cashFlowMatcher';
 
 export interface CloneMonthResult {
   nextPeriodo: PeriodoID;
@@ -171,4 +176,165 @@ export function projectMultipleMonths(
   }
 
   return working;
+}
+
+export interface CardAmortizationResult {
+  updatedItems: ItemFinanciero[];
+  changedItems: ItemFinanciero[];
+  previousCapitalARS: number;
+  nextCapitalARS: number;
+  appliedAmountARS: number;
+  monthlyInterestSavedCents: number;
+}
+
+/**
+ * Aplica una amortización extraordinaria de capital puro sobre una tarjeta rotativa,
+ * registrando la traza en notas y propagando la reducción a meses futuros ya generados.
+ */
+export function amortizeRotatingCardCapital(
+  allItems: ItemFinanciero[],
+  targetCardId: string,
+  amortizeAmountARS: number,
+  dateISO: string,
+  applyToFutureMonths = true
+): CardAmortizationResult | null {
+  const target = allItems.find((i) => i.id === targetCardId);
+  if (!target || target.categoria !== 'TARJETA_ROTATIVA') {
+    return null;
+  }
+
+  const previousCapitalARS = Math.max(0, target.saldoCapitalTotal ?? 0);
+  const previousCents = MoneyUtils.toCents(previousCapitalARS);
+  const amortizeCents = Math.max(0, MoneyUtils.toCents(amortizeAmountARS));
+  if (previousCents <= 0 || amortizeCents <= 0) {
+    return null;
+  }
+
+  const appliedCents = Math.min(previousCents, amortizeCents);
+  const nextCapitalCents = previousCents - appliedCents;
+  const appliedAmountARS = MoneyUtils.fromCents(appliedCents);
+  const nextCapitalARS = MoneyUtils.fromCents(nextCapitalCents);
+
+  const monthlyInterestSavedCents = Math.max(
+    0,
+    estimateMonthlyCardInterestCents(previousCapitalARS, target.tnaEstimada) -
+      estimateMonthlyCardInterestCents(nextCapitalARS, target.tnaEstimada)
+  );
+
+  const normalizedKey = target.id
+    .replace(/^[0-9]{4}-[0-9]{2}-/, '')
+    .replace(/^dic26-/, '');
+
+  const auditEntry = `Amortización ${formatShortDateAR(dateISO)}: -${MoneyUtils.formatARS(
+    appliedAmountARS
+  )} (capital restante ${MoneyUtils.formatARS(nextCapitalARS)})`;
+
+  const changedItems: ItemFinanciero[] = [];
+
+  const updatedItems = allItems.map((it) => {
+    if (it.id === target.id) {
+      const nextNotes = it.notas
+        ? `${auditEntry} · ${it.notas}`.slice(0, 1000)
+        : auditEntry.slice(0, 1000);
+      const updatedCard: ItemFinanciero = {
+        ...it,
+        saldoCapitalTotal: nextCapitalARS,
+        notas: nextNotes,
+        editadoManualmente: true,
+      };
+      changedItems.push(updatedCard);
+      return updatedCard;
+    }
+
+    if (
+      applyToFutureMonths &&
+      it.periodo > target.periodo &&
+      it.categoria === 'TARJETA_ROTATIVA' &&
+      it.estado !== 'EXTINGUIDO'
+    ) {
+      const itKey = it.id
+        .replace(/^[0-9]{4}-[0-9]{2}-/, '')
+        .replace(/^dic26-/, '');
+      const matches =
+        itKey === normalizedKey ||
+        it.titulo.toLowerCase().includes(target.titulo.toLowerCase().split('(')[0].trim());
+      if (!matches) return it;
+
+      const futureCapCents = MoneyUtils.toCents(it.saldoCapitalTotal ?? previousCapitalARS);
+      const reducedFutureCents = Math.max(0, futureCapCents - appliedCents);
+      const updatedFuture: ItemFinanciero = {
+        ...it,
+        saldoCapitalTotal: MoneyUtils.fromCents(reducedFutureCents),
+        editadoManualmente: true,
+      };
+      changedItems.push(updatedFuture);
+      return updatedFuture;
+    }
+
+    return it;
+  });
+
+  return {
+    updatedItems,
+    changedItems,
+    previousCapitalARS,
+    nextCapitalARS,
+    appliedAmountARS,
+    monthlyInterestSavedCents,
+  };
+}
+
+export interface NextMonthProjection {
+  currentPeriodo: PeriodoID;
+  nextPeriodo: PeriodoID;
+  isAlreadyGenerated: boolean;
+  currentSummary: MonthSummary;
+  nextSummary: MonthSummary;
+  deltaObligacionesCents: number;
+  deltaColchonComidaCents: number;
+  deltaTarjetasCents: number;
+  deltaCuotasFijasCents: number;
+  extinguishingItems: ItemFinanciero[];
+  patagoniaCuotaDrops: boolean;
+}
+
+/**
+ * Compara el período actual contra el mes siguiente (usando los datos reales
+ * si ya fue generado o simulando closeAndCloneMonth sin mutar el estado).
+ */
+export function computeNextMonthProjection(
+  activePeriodo: PeriodoID,
+  allItems: ItemFinanciero[]
+): NextMonthProjection {
+  const nextPeriodo = getNextPeriodoId(activePeriodo);
+  const currentItems = allItems.filter((i) => i.periodo === activePeriodo);
+  const existingNextItems = allItems.filter((i) => i.periodo === nextPeriodo);
+  const isAlreadyGenerated = existingNextItems.length > 0;
+
+  const clonePreview = closeAndCloneMonth(activePeriodo, allItems);
+  const nextItems = isAlreadyGenerated
+    ? existingNextItems
+    : clonePreview.newItems;
+
+  const currentSummary = computeMonthSummary(activePeriodo, currentItems);
+  const nextSummary = computeMonthSummary(nextPeriodo, nextItems);
+
+  return {
+    currentPeriodo: activePeriodo,
+    nextPeriodo,
+    isAlreadyGenerated,
+    currentSummary,
+    nextSummary,
+    deltaObligacionesCents:
+      nextSummary.obligacionesFijasTotalesCents -
+      currentSummary.obligacionesFijasTotalesCents,
+    deltaColchonComidaCents:
+      nextSummary.colchonComidaCents - currentSummary.colchonComidaCents,
+    deltaTarjetasCents:
+      nextSummary.tarjetasTotalesCents - currentSummary.tarjetasTotalesCents,
+    deltaCuotasFijasCents:
+      nextSummary.cuotasFijasCents - currentSummary.cuotasFijasCents,
+    extinguishingItems: clonePreview.extinguishedItems,
+    patagoniaCuotaDrops: clonePreview.patagoniaAdjusted,
+  };
 }

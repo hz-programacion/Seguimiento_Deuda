@@ -1,9 +1,40 @@
-import { ItemFinanciero, PeriodoID } from '../types/finance';
+import { FoodExpense, ItemFinanciero, PeriodoID } from '../types/finance';
 import { createSeedDecember2026, SEED_PERIODO_INICIAL } from '../utils/seedData';
 
 const LS_ITEMS_KEY = 'argencaja_items_v1';
 const LS_ACTIVE_PERIOD_KEY = 'argencaja_active_period_v1';
 const LS_MIN_FOOD_KEY = 'argencaja_min_food_ars_v1';
+const LS_FOOD_EXPENSES_KEY = 'argencaja_food_expenses_v1';
+
+export function loadLocalFoodExpenses(): FoodExpense[] {
+  try {
+    const raw = localStorage.getItem(LS_FOOD_EXPENSES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(
+        (e): e is FoodExpense =>
+          Boolean(e) &&
+          typeof e.id === 'string' &&
+          typeof e.periodo === 'string' &&
+          typeof e.concepto === 'string' &&
+          typeof e.monto === 'number' &&
+          typeof e.fechaISO === 'string'
+      );
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+export function saveLocalFoodExpenses(expenses: FoodExpense[]): void {
+  try {
+    localStorage.setItem(LS_FOOD_EXPENSES_KEY, JSON.stringify(expenses));
+  } catch {
+    // ignore
+  }
+}
 
 export function loadMinFoodReserveARS(): number {
   try {

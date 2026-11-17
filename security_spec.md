@@ -7,6 +7,7 @@
 4. **Aislamiento de PII**: `members`, `invites` y `accessRequests` contienen direcciones de correo (`emailLower`) y solo son legibles por el propio titular o por el administrador del hogar.
 5. **Integridad Temporal e Inmutabilidad**: `createdAt` debe igualar `request.time` al crear y permanecer inmutable en `update`; `updatedAt` debe igualar `request.time` en `create` y `update`; `id`, `householdId` y `ownerUid` son inmutables.
 6. **Cero `get()`/`exists()` en `allow list`**: Ninguna regla `allow list` ejecuta lecturas cruzadas; se evalúa `resource.data` (`allowedUids` / `allowedEmails` / `uid` / `emailLower`).
+7. **Consumos de Comida (`/foodExpenses`)**: Participantes activos (`ADMIN` y `HERMANA_COMPROBANTES`) pueden leer y registrar sus compras diarias (`createdByUid == request.auth.uid`, `monto > 0`), pero solo el administrador o el propio autor puede editar/eliminar su registro, bajo validación estricta `isValidFoodExpense` y `hasOnly`.
 
 ## 2. "Dirty Dozen" Payloads Maliciosos (Deben devolver PERMISSION_DENIED)
 1. **Self-Role Escalation**: Colaboradora intenta crear `members/{uid}` con `role: "ADMIN"` sin invitación previa -> Rechazado por `isHouseholdAdmin` / ausencia de `invite`.

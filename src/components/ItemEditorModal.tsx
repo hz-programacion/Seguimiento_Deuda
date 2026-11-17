@@ -79,11 +79,6 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
       ? String(editingItem.saldoCapitalTotal)
       : ''
   );
-  const [ofertaQuitaStr, setOfertaQuitaStr] = useState(
-    editingItem?.montoOfertaQuitaContado !== undefined
-      ? String(editingItem.montoOfertaQuitaContado)
-      : ''
-  );
   const [notas, setNotas] = useState(editingItem?.notas ?? '');
   const [applyToFuture, setApplyToFuture] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -186,9 +181,6 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
     const parsedSaldo = saldoCapitalStr.trim()
       ? Number(saldoCapitalStr.replace(',', '.'))
       : undefined;
-    const parsedQuita = ofertaQuitaStr.trim()
-      ? Number(ofertaQuitaStr.replace(',', '.'))
-      : undefined;
 
     const nextItem: ItemFinanciero = {
       id:
@@ -220,11 +212,6 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
           ? MoneyUtils.fromCents(MoneyUtils.toCents(parsedMonto))
           : undefined,
       tnaEstimada: editingItem?.tnaEstimada,
-      montoOfertaQuitaContado:
-        parsedQuita !== undefined && Number.isFinite(parsedQuita)
-          ? MoneyUtils.fromCents(MoneyUtils.toCents(parsedQuita))
-          : undefined,
-      porcentajeQuita: editingItem?.porcentajeQuita,
       notas: notas.trim() || undefined,
       adjuntos: editingItem?.adjuntos,
     };
@@ -512,45 +499,23 @@ export const ItemEditorModal: React.FC<ItemEditorModalProps> = ({
             </div>
           )}
 
-          {(categoria === 'TARJETA_ROTATIVA' ||
-            categoria === 'DEUDA_CON_QUITA') && (
-            <div className="grid grid-cols-1 gap-4 rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] p-3.5 sm:grid-cols-2">
-              <div>
-                <label
-                  htmlFor="item-saldo-capital"
-                  className="block text-xs font-medium text-[#525866]"
-                >
-                  Saldo total adeudado (ARS)
-                </label>
-                <input
-                  id="item-saldo-capital"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={saldoCapitalStr}
-                  onChange={(e) => setSaldoCapitalStr(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-[#E4E3DD] bg-white px-3 py-1.5 font-mono-tabular text-sm text-[#111318]"
-                />
-              </div>
-              {categoria === 'DEUDA_CON_QUITA' && (
-                <div>
-                  <label
-                    htmlFor="item-quita-contado"
-                    className="block text-xs font-medium text-[#525866]"
-                  >
-                    Oferta contado con quita (ARS)
-                  </label>
-                  <input
-                    id="item-quita-contado"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={ofertaQuitaStr}
-                    onChange={(e) => setOfertaQuitaStr(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-[#E4E3DD] bg-white px-3 py-1.5 font-mono-tabular text-sm text-[#111318]"
-                  />
-                </div>
-              )}
+          {categoria === 'TARJETA_ROTATIVA' && (
+            <div className="rounded-xl border border-[#E4E3DD] bg-[#F6F6F3] p-3.5">
+              <label
+                htmlFor="item-saldo-capital"
+                className="block text-xs font-medium text-[#525866]"
+              >
+                Saldo total adeudado / capital (ARS)
+              </label>
+              <input
+                id="item-saldo-capital"
+                type="number"
+                step="0.01"
+                min="0"
+                value={saldoCapitalStr}
+                onChange={(e) => setSaldoCapitalStr(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-[#E4E3DD] bg-white px-3 py-1.5 font-mono-tabular text-sm text-[#111318]"
+              />
             </div>
           )}
 

@@ -76,4 +76,24 @@ export const MoneyUtils = {
   formatCompactCents(cents: number): string {
     return arsCompactFormatter.format(Math.round(cents / 100));
   },
+
+  /**
+   * Parsea entradas en formato argentino ("48.500,50") o decimal estándar ("48500.50").
+   */
+  parseARSInput(raw: string): number {
+    const cleaned = raw.replace(/[^0-9,.-]/g, '').trim();
+    if (!cleaned) return NaN;
+    const hasComma = cleaned.includes(',');
+    const hasDot = cleaned.includes('.');
+    let normalized = cleaned;
+    if (hasComma && hasDot) {
+      normalized = cleaned.replace(/\./g, '').replace(',', '.');
+    } else if (hasComma) {
+      normalized = cleaned.replace(',', '.');
+    } else if (/^\d{1,3}(\.\d{3})+$/.test(cleaned)) {
+      normalized = cleaned.replace(/\./g, '');
+    }
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  },
 };

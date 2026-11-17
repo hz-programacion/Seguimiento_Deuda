@@ -28,6 +28,7 @@ import {
 import firebaseAppletConfig from '../../firebase-applet-config.json';
 import {
   AccessRequest,
+  FoodExpense,
   HouseholdDoc,
   HouseholdInvite,
   HouseholdMember,
@@ -753,6 +754,92 @@ export async function updateHouseholdMinFoodReserve(
   }
 }
 
+export function subscribeFoodExpenses(
+  user: User,
+  role: HouseholdRole,
+  onExpenses: (expenses: FoodExpense[]) => void,
+  onError: (err: Error) => void
+): () => void {
+  const path = `households/${HOUSEHOLD_ID}/foodExpenses`;
+  const colRef = collection(db, 'households', HOUSEHOLD_ID, 'foodExpenses');
+  const emailLower = (user.email ?? '').trim().toLowerCase();
+
+  const q =
+    role === 'ADMIN'
+      ? colRef
+      : query(colRef, where('allowedEmails', 'array-contains', emailLower));
+
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => d.data() as FoodExpense);
+      onExpenses(list);
+    },
+    (err) => {
+      try {
+        handleFirestoreError(err, OperationType.LIST, path);
+      } catch (wrapped) {
+        onError(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
+      }
+    }
+  );
+}
+
+export async function createFoodExpense(
+  household: HouseholdDoc,
+  actor: User,
+  expense: Omit<FoodExpense, 'createdByUid' | 'createdByEmail'>
+): Promise<void> {
+  const safeId = expense.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128) || 'comida';
+  const path = `households/${HOUSEHOLD_ID}/foodExpenses/${safeId}`;
+  const emailLower = (actor.email ?? '').trim().toLowerCase() || 'usuario@argencaja';
+  const safeMonto =
+    Number.isFinite(expense.monto) && expense.monto > 0
+      ? Math.min(100000000, expense.monto)
+      : 1;
+  const safeFecha = /^\d{4}-\d{2}-\d{2}$/.test(expense.fechaISO)
+    ? expense.fechaISO
+    : `${expense.periodo}-01`;
+
+  const payload: Record<string, unknown> = {
+    id: safeId,
+    householdId: household.id,
+    ownerUid: household.ownerUid,
+    allowedUids: household.allowedUids.slice(0, 10),
+    allowedEmails: household.allowedEmails.slice(0, 10),
+    periodo: expense.periodo,
+    concepto: expense.concepto.trim().slice(0, 140) || 'Compra comida',
+    monto: safeMonto,
+    fechaISO: safeFecha,
+    createdByUid: actor.uid,
+    createdByEmail: emailLower.slice(0, 120),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  if (expense.comercio !== undefined && expense.comercio.trim()) {
+    payload.comercio = expense.comercio.trim().slice(0, 80);
+  }
+  if (expense.notas !== undefined && expense.notas.trim()) {
+    payload.notas = expense.notas.trim().slice(0, 400);
+  }
+
+  try {
+    await setDoc(doc(db, 'households', HOUSEHOLD_ID, 'foodExpenses', safeId), payload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+}
+
+export async function deleteFoodExpense(expenseId: string): Promise<void> {
+  const path = `households/${HOUSEHOLD_ID}/foodExpenses/${expenseId}`;
+  try {
+    await deleteDoc(doc(db, 'households', HOUSEHOLD_ID, 'foodExpenses', expenseId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
 // =========================================================================
 // Administración de Miembros, Pre-Invitaciones y Aprobaciones
 // =========================================================================
@@ -865,6 +952,22 @@ async function syncHouseholdAccessLists(
         allowedEmails: cleanEmails,
         updatedAt: serverTimestamp(),
         updatedByUid: actorUid,
+      });
+    }
+    await batch.commit();
+  }
+
+  const foodSnap = await getDocs(
+    collection(db, 'households', HOUSEHOLD_ID, 'foodExpenses')
+  );
+  const foodDocs = foodSnap.docs;
+  for (let i = 0; i < foodDocs.length; i += CHUNK) {
+    const batch = writeBatch(db);
+    for (const d of foodDocs.slice(i, i + CHUNK)) {
+      batch.update(d.ref, {
+        allowedUids: cleanUids,
+        allowedEmails: cleanEmails,
+        updatedAt: serverTimestamp(),
       });
     }
     await batch.commit();

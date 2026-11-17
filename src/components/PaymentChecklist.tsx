@@ -18,6 +18,7 @@ import {
 import { formatDateAR, formatPeriodoLabel } from '../utils/dateUtils';
 import { MoneyUtils } from '../utils/moneyUtils';
 import {
+  getEffectiveItemAmountCents,
   isIncomeCategory,
   isObligationCategory,
 } from '../utils/cashFlowMatcher';
@@ -191,7 +192,7 @@ export const PaymentChecklist: React.FC<PaymentChecklistProps> = ({
 
     if (incomes.length > 0) {
       const sumCents = MoneyUtils.sumCents(
-        incomes.map((i) => MoneyUtils.toCents(i.montoPactado))
+        incomes.map((i) => getEffectiveItemAmountCents(i))
       );
       groups.push({
         id: 'ingresos',
@@ -261,10 +262,10 @@ export const PaymentChecklist: React.FC<PaymentChecklistProps> = ({
     for (const item of filteredItems) {
       if (item.estado === 'EXTINGUIDO') continue;
       if (isIncomeCategory(item.categoria)) {
-        incomeCents += MoneyUtils.toCents(item.montoPactado);
+        incomeCents += getEffectiveItemAmountCents(item);
       } else if (isObligationCategory(item.categoria)) {
         if (item.estado === 'PAGADO') {
-          paidCents += MoneyUtils.toCents(item.montoPagado ?? item.montoPactado);
+          paidCents += getEffectiveItemAmountCents(item);
         } else {
           pendingCents += MoneyUtils.toCents(item.montoPactado);
         }
@@ -475,6 +476,14 @@ export const PaymentChecklist: React.FC<PaymentChecklistProps> = ({
                               }
                             />
                           )}
+                          {item.estado === 'PAGADO' &&
+                          item.montoPagado !== undefined &&
+                          MoneyUtils.toCents(item.montoPagado) !==
+                            MoneyUtils.toCents(item.montoPactado) ? (
+                            <div className="font-mono-tabular text-[11px] text-[#747A88]">
+                              Pactado: {MoneyUtils.formatARS(item.montoPactado)}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
 

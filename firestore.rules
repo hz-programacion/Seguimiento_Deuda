@@ -381,6 +381,58 @@ service cloud.firestore {
         && isValidString(data.updatedByUid, 1, 128);
     }
 
+    function isValidFoodExpense(data) {
+      return data.keys().hasAll([
+          'id',
+          'householdId',
+          'ownerUid',
+          'allowedUids',
+          'allowedEmails',
+          'periodo',
+          'concepto',
+          'monto',
+          'fechaISO',
+          'createdByUid',
+          'createdByEmail',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id',
+          'householdId',
+          'ownerUid',
+          'allowedUids',
+          'allowedEmails',
+          'periodo',
+          'concepto',
+          'comercio',
+          'monto',
+          'fechaISO',
+          'notas',
+          'createdByUid',
+          'createdByEmail',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.householdId)
+        && isValidString(data.ownerUid, 1, 128)
+        && isValidBoundedStringList(data.allowedUids, 10)
+        && isValidBoundedStringList(data.allowedEmails, 10)
+        && isValidPeriod(data.periodo)
+        && isValidString(data.concepto, 1, 140)
+        && (!('comercio' in data) || isValidString(data.comercio, 0, 80))
+        && data.monto is number
+        && data.monto > 0
+        && data.monto <= 100000000
+        && isValidIsoDate(data.fechaISO)
+        && (!('notas' in data) || isValidString(data.notas, 0, 400))
+        && isValidString(data.createdByUid, 1, 128)
+        && isValidString(data.createdByEmail, 3, 120)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     // =========================================================================
     // Collections & Subcollections
     // =========================================================================
@@ -656,6 +708,84 @@ service cloud.firestore {
         allow delete: if isValidId(householdId)
           && isValidId(itemId)
           && isHouseholdAdmin(householdId);
+      }
+
+      // -----------------------------------------------------------------------
+      // Food Expenses Ledger (Admin & Active Collaborator can log/manage food)
+      // -----------------------------------------------------------------------
+      match /foodExpenses/{expenseId} {
+        allow get: if isValidId(householdId)
+          && isValidId(expenseId)
+          && isHouseholdParticipant(householdId);
+
+        allow list: if isVerifiedUser()
+          && (
+            isPrimaryAdmin()
+            || request.auth.uid in existing().allowedUids
+            || request.auth.token.email.lower() in existing().allowedEmails
+          );
+
+        allow create: if isValidId(householdId)
+          && isValidId(expenseId)
+          && isHouseholdParticipant(householdId)
+          && isValidFoodExpense(incoming())
+          && exists(householdPath(householdId))
+          && incoming().id == expenseId
+          && incoming().householdId == householdId
+          && incoming().createdByUid == request.auth.uid
+          && incoming().createdByEmail == request.auth.token.email.lower()
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+
+        allow update: if isValidId(householdId)
+          && isValidId(expenseId)
+          && isHouseholdParticipant(householdId)
+          && isValidFoodExpense(incoming())
+          && incoming().id == existing().id
+          && incoming().householdId == existing().householdId
+          && incoming().ownerUid == existing().ownerUid
+          && incoming().createdByUid == existing().createdByUid
+          && incoming().createdByEmail == existing().createdByEmail
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            (
+              isHouseholdAdmin(householdId)
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'concepto',
+                'comercio',
+                'monto',
+                'fechaISO',
+                'periodo',
+                'notas',
+                'allowedUids',
+                'allowedEmails',
+                'updatedAt'
+              ])
+            )
+            || (
+              existing().createdByUid == request.auth.uid
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'concepto',
+                'comercio',
+                'monto',
+                'fechaISO',
+                'periodo',
+                'notas',
+                'updatedAt'
+              ])
+            )
+          );
+
+        allow delete: if isValidId(householdId)
+          && isValidId(expenseId)
+          && (
+            isHouseholdAdmin(householdId)
+            || (
+              isHouseholdParticipant(householdId)
+              && existing().createdByUid == request.auth.uid
+            )
+          );
       }
     }
   }
